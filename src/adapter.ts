@@ -121,10 +121,29 @@ function reasoningOf(model: CatalogModel): LlmResolvedModelInfo['reasoning'] | u
 }
 
 /** Build one pi-ai model descriptor pointing at the panel. */
+/**
+ * The model name the picker shows, with the gateway's multiplier appended.
+ *
+ * The panel reports a per-model ratio (`x0.05`) rather than a token price, and
+ * pi-ai has no field for a ratio — so it goes on the visible name, which is also
+ * how the hub's channels render theirs. A model without a ratio keeps its name
+ * untouched: inventing "x0" would read as free.
+ */
+function pricingSuffix(model: CatalogModel): string {
+  const credits = model.credits === undefined ? '' : model.credits.trim()
+  if (credits === '') return model.name
+  // The gateway spells a free row as "x0.00"; the picker says 免费, like the hub.
+  return model.name + ' · ' + (credits === 'x0' || credits === 'x0.0' || credits === 'x0.00' ? '免费' : credits)
+}
+
 function toPiModel(model: CatalogModel, baseUrl: string, providerId: string): Model<Api> {
   return {
     id: model.id,
-    name: model.name,
+    // The picker lists a model by name; the gateway's per-token multiplier has
+    // no field of its own here (pi-ai's `cost` is a token price, not a
+    // subscription ratio), so it rides on the name the same way the hub's
+    // channels show theirs: "Deepseek-V4.1-Flash · x0.05".
+    name: pricingSuffix(model),
     api: 'openai-completions',
     provider: providerId,
     baseUrl,
@@ -135,7 +154,13 @@ function toPiModel(model: CatalogModel, baseUrl: string, providerId: string): Mo
     maxTokens: model.maxOutputTokens > 0 ? model.maxOutputTokens : 32_768,
     // The panel's gateway reads `max_tokens`; pi-ai cannot infer that spelling
     // from a loopback URL, so name it.
-    compat: { maxTokensField: 'max_tokens' },
+    // Ask pi-ai to send the session affinity headers (`session_id`,
+    // `x-client-request-id`, `x-session-affinity`) carrying the host's session
+    // id. Without them the gateway has no per-conversation key at all: pi-ai
+    // only puts one in the body (`prompt_cache_key`) for api.openai.com, and a
+    // loopback panel URL never matches, so the panel cannot pin a conversation
+    // to an account.
+    compat: { maxTokensField: 'max_tokens', sendSessionAffinityHeaders: true, sessionAffinityFormat: 'openai' },
   } as unknown as Model<Api>
 }
 

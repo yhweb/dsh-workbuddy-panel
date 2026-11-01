@@ -93,6 +93,7 @@ const document = {
     topModel: 'cn:deepseek-v4.1-flash',
     empty: false,
   },
+  sessions: { supported: true, bindings: [], defaults: {} },
   updatedAt: '2026-10-24T09:00:01.000Z',
 } as unknown as StatusDocument
 
@@ -171,22 +172,95 @@ function fakeDirectory(provider: string): ModelDirectory['store'] {
 
 describe('credit badge', () => {
   const store = fakeStore({ document, loading: false })
+  /** Two usable domestic accounts: enough that the pool alone cannot name one. */
+  const pair = [
+    { ...document.accounts[0]!, uid: 'u1', nickname: '低调哥', credits: 2099, creditsTotal: 2100 },
+    { ...document.accounts[0]!, uid: 'u3', nickname: '备用号', credits: 4000, creditsTotal: 4000 },
+  ]
 
-  it('shows the domestic pool when the domestic route is selected', () => {
+  it('names the domestic account the pool would spend from', () => {
     const html = renderToStaticMarkup(
       <WorkBuddy2ApiCreditBadge t={zh} store={store} directory={fakeDirectory('workbuddy2api')} />,
     )
-    expect(html).toContain('CN 剩余积分')
+    expect(html).toContain('wb2aChipNum')
+    // One usable domestic account is unambiguous even with no request history.
+    expect(html).toContain('<b>低调哥</b>')
     expect(html).toContain('2,099')
+  })
+
+  it('names the account that served the last request when several are usable', () => {
+    const served = fakeStore({
+      loading: false,
+      document: {
+        ...document,
+        accounts: [
+          { ...pair[0]!, lastSuccess: '2026-10-31T12:00:00.000Z' },
+          { ...pair[1]!, lastSuccess: '2026-10-31T14:19:11.000Z' },
+        ],
+      },
+    })
+    const html = renderToStaticMarkup(
+      <WorkBuddy2ApiCreditBadge t={zh} store={served} directory={fakeDirectory('workbuddy2api')} />,
+    )
+    expect(html).toContain('<b>备用号</b>')
+    expect(html).toContain('4,000')
+  })
+
+  it('falls back to the pool label and the realm total when nothing can name one account', () => {
+    const pond = fakeStore({ loading: false, document: { ...document, accounts: pair } })
+    const html = renderToStaticMarkup(
+      <WorkBuddy2ApiCreditBadge t={zh} store={pond} directory={fakeDirectory('workbuddy2api')} />,
+    )
+    expect(html).toContain('<b>账号池</b>')
+    expect(html).toContain('6,099')
   })
 
   it('shows the global pool when the global route is selected', () => {
     const html = renderToStaticMarkup(
       <WorkBuddy2ApiCreditBadge t={zh} store={store} directory={fakeDirectory('workbuddy2api-global')} />,
     )
-    expect(html).toContain('Global 剩余积分')
+    expect(html).toContain('wb2aChipNum')
     expect(html).toContain('5')
     expect(html).not.toContain('2,099')
+    // The only global account is cooling, so no account can be named.
+    expect(html).toContain('<b>账号池</b>')
+  })
+
+  it('names the pinned account of this conversation ahead of the served one', () => {
+    const pinned = fakeStore({
+      loading: false,
+      document: {
+        ...document,
+        sessions: { supported: true, bindings: [{ key: 's1', uid: 'u1' }], defaults: {} },
+        accounts: [
+          { ...pair[0]!, lastSuccess: '2026-10-31T12:00:00.000Z' },
+          { ...pair[1]!, lastSuccess: '2026-10-31T14:19:11.000Z' },
+        ],
+      },
+    })
+    const html = renderToStaticMarkup(
+      <WorkBuddy2ApiCreditBadge t={zh} store={pinned} directory={fakeDirectory('workbuddy2api')} session="s1" />,
+    )
+    // A pin is the user's decision: it outranks the account that served last.
+    expect(html).toContain('<b>低调哥</b>')
+    expect(html).toContain('2,099')
+    expect(html).not.toContain('<b>备用号</b>')
+    expect(html).toContain('已固定：低调哥')
+    // The chip is the picker's trigger.
+    expect(html).toContain('<button')
+    expect(html).toContain('aria-haspopup="dialog"')
+  })
+
+  it('keeps the inferred account when the kernel cannot bind a session', () => {
+    const legacy = fakeStore({
+      loading: false,
+      document: { ...document, sessions: { supported: false, bindings: [], defaults: {} } },
+    })
+    const html = renderToStaticMarkup(
+      <WorkBuddy2ApiCreditBadge t={zh} store={legacy} directory={fakeDirectory('workbuddy2api')} session="s1" />,
+    )
+    expect(html).toContain('<b>低调哥</b>')
+    expect(html).not.toMatch(/\{\d\}/)
   })
 
   it('renders nothing for another provider', () => {

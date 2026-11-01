@@ -30,6 +30,11 @@ export function gatewayWorkdir(): string {
   return join(pluginDataDir(), 'gateway')
 }
 
+/** Manual account picks that must survive a restart: one uid per realm. */
+export function accountDefaultsPath(): string {
+  return join(pluginDataDir(), 'account-defaults.json')
+}
+
 /** The gateway's config.json path. */
 /**
  * The verified server cache.

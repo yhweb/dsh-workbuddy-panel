@@ -1,11 +1,10 @@
-import { a as GatewayState, c as KernelUpdateStatus, d as ServerStatus, i as GatewayLogLine, l as ServerDownloadState, n as GATEWAY_HOST_SERVICE_VERSION, o as GatewayStatus, r as GatewayHost, s as KernelCheckCadence, t as GATEWAY_HOST_SERVICE, u as ServerDownloadStatus } from "./gateway-contract-C6PWwSdB.js";
+import { a as GatewayState, c as KernelUpdateStatus, d as ServerStatus, i as GatewayLogLine, l as ServerDownloadState, n as GATEWAY_HOST_SERVICE_VERSION, o as GatewayStatus, r as GatewayHost, s as KernelCheckCadence, t as GATEWAY_HOST_SERVICE, u as ServerDownloadStatus } from "./gateway-contract-Dx2NgcNg.js";
 import z from "@deepseek-ai/schemastery";
 import { ImageAttachmentAccess } from "@deepseek-ai/dsh-llm";
 import "@earendil-works/pi-ai";
 import { PiAiAdapter } from "@deepseek-ai/dsh-llm-pi-ai";
 import { Context } from "@deepseek-ai/cordis";
 import { AttachmentStore, ImageAttachmentRef } from "@deepseek-ai/dsh-attachment";
-//#region src/usage.d.ts
 /**
  * Reading the gateway's own usage ledger.
  *
@@ -51,8 +50,6 @@ interface UsageSummary {
   /** Whether any bucket was read at all. */
   empty: boolean;
 }
-//#endregion
-//#region src/panel-client.d.ts
 /**
  * Typed client for a local `workbuddy2api-panel` (`/panel/api/*`).
  *
@@ -178,6 +175,20 @@ interface PanelWriteResult {
 declare function safeMessage(error: unknown): string;
 /** Normalize a user-supplied panel URL into an origin. */
 declare function normalizePanelUrl(raw: string): string;
+/** One session→account binding, as the kernel's session-sticky table reports it. */
+/** Session-scoped spend, as the kernel reports it (its own ledger). */
+interface PanelSessionCredits {
+  /** False when the kernel has no record for this session yet. */
+  found: boolean;
+  credits: number;
+  requests: number;
+  lastAt?: string;
+}
+interface PanelBinding {
+  key: string;
+  uid: string;
+  lastActive?: string;
+}
 /** The panel admin client. */
 declare class PanelClient {
   private readonly endpoint;
@@ -206,6 +217,14 @@ declare class PanelClient {
   }>;
   /** Poll one in-flight add. */
   loginPoll(state: string): Promise<PanelLoginPoll>;
+  /** The session→account bindings; empty when the kernel keeps none. */
+  /** Session-scoped spend, read from the kernel's own ledger. */
+  sessionCredits(key: string): Promise<PanelSessionCredits>;
+  sessionBindings(): Promise<PanelBinding[]>;
+  /** Pin one session key to one account; answers with the new binding list. */
+  bindSession(key: string, uid: string): Promise<PanelBinding[]>;
+  /** Release one session key so the pool allocates it again. */
+  unbindSession(key: string): Promise<PanelBinding[]>;
   /** Login regions the panel offers for the international realm. */
   regions(): Promise<readonly {
     code: string;
@@ -226,8 +245,6 @@ declare class PanelClient {
 type AccountOp = 'revive' | 'disable' | 'pause' | 'resume' | 'checkin' | 'balance' | 'remove';
 /** Pool-wide operations the panel exposes. */
 type BulkOp = 'checkin_all' | 'balance_all' | 'keepalive_all' | 'travel_all' | 'activity_all' | 'compensation_all';
-//#endregion
-//#region src/catalog.d.ts
 /** Reasoning levels pi-ai can express, in display order. */
 declare const THINKING_LEVELS: readonly ["off", "low", "medium", "high", "xhigh", "max"];
 /** One reasoning level name. */
@@ -298,8 +315,6 @@ declare function visibleIds(catalog: readonly CatalogModel[]): string[];
  * somebody else disabled is worse than a slightly stale entry.
  */
 declare function panelHiddenList(catalog: readonly CatalogModel[], previous: readonly string[]): string[];
-//#endregion
-//#region src/overrides-store.d.ts
 /** The overrides document, read and written through the shared atomic store. */
 declare class ModelOverridesStore {
   private readonly path;
@@ -329,8 +344,6 @@ declare class ModelOverridesStore {
   /** Replace the whole document (used by tests and by a reset action). */
   write(models: Record<string, ModelOverride>): void;
 }
-//#endregion
-//#region src/settings-store.d.ts
 /**
  * Connection settings written by the settings page: where the panel lives, the
  * key to reach it, how often to re-read it, and whether a local hide is also
@@ -369,8 +382,6 @@ declare class ConnectionStore {
   /** Merge a patch into the stored document. */
   patch(patch: Partial<ConnectionSettings>): ConnectionSettings;
 }
-//#endregion
-//#region src/service.d.ts
 /** One account as the browser sees it. */
 interface WebAccount {
   uid: string;
@@ -444,6 +455,33 @@ interface ProviderRouteState {
   conflict?: string;
 }
 /** Everything the browser surfaces render. */
+/** One session→account binding, as the browser reads it. */
+interface WebSessionBinding {
+  key: string;
+  uid: string;
+  lastActive?: string;
+}
+/**
+ * Session-level account binding support.
+ *
+ * "supported" is absent until a read has an opinion: a kernel that predates the
+ * patch answers 404, and the chip says so instead of offering a button that
+ * cannot work.
+ */
+interface WebSessions {
+  supported?: boolean;
+  bindings: readonly WebSessionBinding[];
+  /**
+   * The account the user last picked by hand, per realm. A new conversation has
+   * no binding of its own, so the chip re-creates the pin from here; deleting
+   * the plugin's `account-defaults.json` returns it to pool allocation.
+   */
+  defaults: {
+    cn?: string;
+    global?: string;
+  };
+  error?: string;
+}
 interface WebStatus {
   ok: true;
   version: string;
@@ -478,6 +516,8 @@ interface WebStatus {
   client: WebClientProbe;
   /** The gateway's usage ledger, folded into one window. */
   usage: UsageSummary;
+  /** Which account each conversation is pinned to, when the kernel keeps that. */
+  sessions: WebSessions;
   counts: {
     total: number;
     healthy: number;
@@ -507,6 +547,8 @@ interface ActionOutcome {
   ok: boolean;
   message?: string;
   status?: WebStatus;
+  /** Present on `session-credits`: this session's spend as the kernel accounts it. */
+  credits?: PanelSessionCredits;
 }
 /** Dependencies the service reads. */
 interface WorkBuddy2ApiServiceOptions {
@@ -549,6 +591,13 @@ declare class WorkBuddy2ApiService {
   private inFlight?;
   /** Whether the last gateway read actually reached it. */
   private lastReadOk;
+  /** Session to account bindings last read from the kernel, if it has them. */
+  private sessions;
+  /** True once the kernel answered, false when it refused the route, absent before the first read. */
+  private sessionsSupported?;
+  private sessionsError?;
+  /** The account the user picked by hand; survives restarts and applies to new sessions. */
+  private defaults;
   private emptyModelReads;
   /** Consecutive reads that omitted a realm, keyed by realm. */
   private realmGaps;
@@ -641,6 +690,26 @@ declare class WorkBuddy2ApiService {
   expireLogin(now?: number): boolean;
   /** One per-account operation. */
   accountOp(uid: string, op: AccountOp): Promise<ActionOutcome>;
+  /**
+   * Fold the binding read into state without ever failing the overview.
+   *
+   * A kernel without the endpoints answers 404 and is remembered, so the chip
+   * can say "needs a newer kernel" once instead of probing a dead route on
+   * every poll. Any other failure is reported but keeps the last list.
+   */
+  private noteBindings;
+  /** The realm an account belongs to, read from the last overview. */
+  private realmOfAccount;
+  /** Persist one manual pick as the realm's default. */
+  private rememberPick;
+  /** Drop the realm's default, so new sessions go back to pool allocation. */
+  private forgetPick;
+  /** Pin one session key to one account: the pool stops rotating that session. */
+  bindSession(key: string, uid: string): Promise<ActionOutcome>;
+  /** Read one session's spend from the kernel's ledger (upstream `usage.credit`). */
+  sessionCredits(key: string): Promise<ActionOutcome>;
+  /** Release one session key back to the pool's own allocation. */
+  unbindSession(key: string): Promise<ActionOutcome>;
   /** One pool-wide operation. */
   bulkOp(op: BulkOp): Promise<ActionOutcome>;
   /** Import accounts from the cockpit export shape. */
@@ -658,8 +727,6 @@ declare class WorkBuddy2ApiService {
   /** Stop every timer this service owns. */
   dispose(): void;
 }
-//#endregion
-//#region src/adapter.d.ts
 /** Provider route this bundle owns by default. */
 declare const WORKBUDDY2API_PROVIDER = "workbuddy2api";
 /** Constructor dependencies. */
@@ -724,8 +791,6 @@ interface WorkBuddy2ApiAdapter {
  * adopted here explicitly.
  */
 declare function createWorkBuddy2ApiAdapter(options: WorkBuddy2ApiAdapterOptions): WorkBuddy2ApiAdapter;
-//#endregion
-//#region src/routes.d.ts
 /** Status document path. */
 declare const STATUS_PATH = "/plugins/workbuddy2api-gateway/status";
 /** Action endpoint path. */
@@ -793,13 +858,21 @@ type GatewayAction = {
 } | {
   action: 'import';
   payload: string;
+} | {
+  action: 'session-bind';
+  session: string;
+  uid: string;
+} | {
+  action: 'session-unbind';
+  session: string;
+} | {
+  action: 'session-credits';
+  session: string;
 };
 /** Parse and shape-check one action; unknown fields are ignored, not trusted. */
 declare function parseAction(text: string): GatewayAction | undefined;
 /** Execute one parsed action against the service. */
 declare function runAction(service: WorkBuddy2ApiService, action: GatewayAction): Promise<unknown>;
-//#endregion
-//#region src/version.d.ts
 /**
  * The build-stamped package version, injected by `tsdown` at build time.
  *
@@ -811,8 +884,6 @@ declare function runAction(service: WorkBuddy2ApiService, action: GatewayAction)
  */
 /** This build's version. */
 declare const WORKBUDDY2API_GATEWAY_VERSION: string;
-//#endregion
-//#region src/paths.d.ts
 /** This plugin's data directory. */
 declare function pluginDataDir(): string;
 /** The supervised gateway's working directory (its auths/ and data/ live here). */
@@ -827,8 +898,6 @@ declare function gatewayWorkdir(): string;
  */
 declare function serverRootDir(): string;
 declare function gatewayConfigPath(): string;
-//#endregion
-//#region src/index.d.ts
 /** Stable Cordis plugin name. */
 declare const name = "llm-workbuddy2api-gateway";
 /** The model registry required before the route can register. */
@@ -856,5 +925,4 @@ interface Config {
 }
 /** Wire the plugin into the host. */
 declare function apply(ctx: Context, config: Config): void;
-//#endregion
 export { ACTION_PATH, type AccountOp, type ActionOutcome, type BulkOp, type CatalogModel, Config, type ConnectionSettings, ConnectionStore, DEFAULT_CONNECTION, GATEWAY_HOST_SERVICE, GATEWAY_HOST_SERVICE_VERSION, type GatewayAction, type GatewayHost, type GatewayLogLine, type GatewayState, type GatewayStatus, type ModelOverride, ModelOverridesStore, type PanelAccount, PanelClient, PanelError, type PanelModel, type PanelOverview, STATUS_PATH, type ServerDownloadState, type ServerDownloadStatus, type ServerStatus, THINKING_LEVELS, type ThinkingLevel, WORKBUDDY2API_GATEWAY_VERSION, WORKBUDDY2API_PROVIDER, type WebAccount, type WebLogin, type WebLoginDone, type WebModel, type WebStatus, type WebSync, WorkBuddy2ApiService, apply, buildCatalog, clampRefreshSeconds, createWorkBuddy2ApiAdapter, gatewayConfigPath, gatewayWorkdir, hiddenIds, inject, isThinkingLevel, name, normalizePanelUrl, panelHiddenList, parseAction, pluginDataDir, runAction, safeMessage, serverRootDir, visibleIds };

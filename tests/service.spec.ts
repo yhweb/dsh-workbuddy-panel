@@ -108,6 +108,7 @@ function makeService(
     overview: async () => OVERVIEW,
     models,
     config: async () => ({ raw: { models: { hidden: ['legacy-model'] } } }),
+    sessionBindings: async () => [],
     saveHidden: async () => ({ ok: true }),
     ...clientOverrides,
   } as unknown as PanelClient

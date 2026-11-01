@@ -71,6 +71,9 @@ export type GatewayAction =
   | { action: 'account', uid: string, op: AccountOp }
   | { action: 'bulk', op: BulkOp }
   | { action: 'import', payload: string }
+  | { action: 'session-bind', session: string, uid: string }
+  | { action: 'session-unbind', session: string }
+  | { action: 'session-credits', session: string }
 
 /** Write one JSON response. */
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -203,6 +206,17 @@ export function parseAction(text: string): GatewayAction | undefined {
       if (!(BULK_OPS as readonly string[]).includes(op)) return undefined
       return { action: 'bulk', op: op as BulkOp }
     }
+    case 'session-bind': {
+      const session = strField(body['session'])
+      const uid = strField(body['uid'])
+      return session === undefined || uid === undefined
+        ? undefined
+        : { action: 'session-bind', session, uid }
+    }
+    case 'session-unbind': {
+      const session = strField(body['session'])
+      return session === undefined ? undefined : { action: 'session-unbind', session }
+    }
     case 'import': {
       const payload = strField(body['payload'])
       return payload === undefined ? undefined : { action: 'import', payload }
@@ -323,6 +337,12 @@ export async function runAction(service: WorkBuddy2ApiService, action: GatewayAc
       return service.accountOp(action.uid, action.op)
     case 'bulk':
       return service.bulkOp(action.op)
+    case 'session-bind':
+      return service.bindSession(action.session, action.uid)
+    case 'session-unbind':
+      return service.unbindSession(action.session)
+    case 'session-credits':
+      return service.sessionCredits(action.session)
     case 'import':
       return service.importAccounts(action.payload)
   }

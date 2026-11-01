@@ -33,6 +33,7 @@ import type { ReactElement } from 'react'
 import { WorkBuddy2ApiSettingsPage } from './SettingsPage.tsx'
 import { WorkBuddy2ApiFooterEntry, WorkBuddy2ApiPanel } from './panel-view.tsx'
 import { WorkBuddy2ApiCreditBadge } from './credit-badge.tsx'
+import { WorkBuddy2ApiTurnCredits } from './turn-credits.tsx'
 import type { PanelInjected } from './panel-view.tsx'
 import { panelStore } from './store.ts'
 import { COPY, makeTranslator } from './copy.ts'
@@ -227,26 +228,31 @@ export function apply(ctx: ClientContext): void {
 
   // Gated on `layout`: without `selectPanel` the card would render and do
   // nothing when clicked, and a dead button is worse than no button.
-  // The pool's remaining credit, in the composer's own meter row. The sidebar
-  // card that used to carry it is gone: the composer is where a turn is spent
-  // from, so that is where the figure belongs.
-  guard('composer credits', () => {
-    // The badge must know which of our two routes the session selected: the
+  // The account the next turn is spent from, in the composer's trailing row.
+  // That row is where every other channel's balance already sits (and where the
+  // model selector lives), so the figure is read in the same glance as the
+  // model; the dock row below the input is a second line of chrome nobody looks
+  // at. The composition is the pool's, the identity is the account's.
+  guard('composer account chip', () => {
+    // The chip must know which of our two routes the session selected: the
     // domestic and global pools are not convertible, so one figure cannot stand
     // for both. The model-directory service may arrive after this fiber starts,
     // hence the scoped inject rather than an eager read.
     ctx.inject(['modelDirectories'], scope => {
       const modelDirectories = (scope as unknown as { modelDirectories: ModelDirectoriesSeam }).modelDirectories
-      guard('composer credits', () => {
-        slots.inject('conversation.composer.dock', () => (
-          guard('composer credits', () => slots.register({
-            name: 'conversation.composer.dock',
-            id: 'workbuddy2api-credits',
+      guard('composer account chip', () => {
+        slots.inject('conversation.input.right', () => (
+          guard('composer account chip', () => slots.register({
+            name: 'conversation.input.right',
+            id: 'workbuddy2api-account',
             order: 100,
             inject: (sessionId: string) => ({
               t: panelT,
               store: panelStore,
               directory: modelDirectories.directoryFor(sessionId).store,
+              // The session id is the key the kernel's sticky table binds: the
+              // chip pins an account for exactly this conversation.
+              session: sessionId,
             }),
           }, WorkBuddy2ApiCreditBadge)) ?? NOOP_DISPOSER
         ))
@@ -277,6 +283,21 @@ export function apply(ctx: ClientContext): void {
         observer.disconnect()
       }
     }, 'dsh-workbuddy2api-gateway: nav glyph')
+  })
+
+  // The conversation's spend, in the composer's dock row: the badge answers
+  // "which account", this answers "how much has this conversation cost". It is a
+  // separate slot on purpose — the badge must stay a one-glance identity chip.
+  guard('turn credits', () => {
+    slots.inject('conversation.composer.dock', () => (
+      guard('turn credits', () => slots.register({
+        name: 'conversation.composer.dock',
+        id: 'workbuddy2api-turn-credits',
+        order: 90,
+        locale: PANEL_NS,
+        inject: (sessionId: string) => ({ t: panelT, store: panelStore, session: sessionId }),
+      }, WorkBuddy2ApiTurnCredits)) ?? NOOP_DISPOSER
+    ))
   })
 
   guard('settings section', () => {

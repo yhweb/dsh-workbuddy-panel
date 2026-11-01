@@ -56,6 +56,9 @@ export type ClientAction =
   | { action: 'account', uid: string, op: AccountOp }
   | { action: 'bulk', op: BulkOp }
   | { action: 'import', payload: string }
+  | { action: 'session-bind', session: string, uid: string }
+  | { action: 'session-unbind', session: string }
+  | { action: 'session-credits', session: string }
 
 /** One action response. */
 export interface ActionResponse {
@@ -63,6 +66,8 @@ export interface ActionResponse {
   message?: string
   url?: string
   state?: string
+  /** Present on `session-credits`: the kernel's ledger for one session. */
+  credits?: { found: boolean, credits: number, requests: number, lastAt?: string }
   imported?: number
   skipped?: number
   status?: WebStatus
@@ -127,6 +132,7 @@ export async function postAction(action: ClientAction, controlKey: string): Prom
       ...typeof record['state'] === 'string' ? { state: record['state'] } : {},
       ...typeof record['imported'] === 'number' ? { imported: record['imported'] } : {},
       ...typeof record['skipped'] === 'number' ? { skipped: record['skipped'] } : {},
+      ...typeof record['credits'] === 'object' && record['credits'] !== null ? { credits: record['credits'] as { found: boolean, credits: number, requests: number, lastAt?: string } } : {},
       ...typeof record['status'] === 'object' && record['status'] !== null
         ? { status: record['status'] as WebStatus }
         : {},

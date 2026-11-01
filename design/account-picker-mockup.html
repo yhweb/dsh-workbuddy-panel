@@ -1,0 +1,165 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>WorkBuddy2API 账号选择 UI 原型</title>
+<style>
+:root{--bg:#191a1d;--panel:#212227;--panel2:#26272d;--line:#33343b;--tx:#e9e9ec;--tx2:#9b9ca6;--tx3:#71727c;--acc:#8b7cf6;--ok:#3ecf8e;--warn:#e8b33d;--bad:#e2665f;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--tx);font:14px/1.5 "Segoe UI","Microsoft YaHei",system-ui,sans-serif;padding:26px 30px 34px}
+h1{font-size:15px;font-weight:600;color:var(--tx2);letter-spacing:.3px;margin-bottom:16px}
+.cap{font-size:12px;color:var(--tx3);margin:0 0 8px 2px}
+.wrap{display:flex;flex-direction:column;gap:22px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+/* ---- 输入区复刻 ---- */
+.row{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 12px}
+.pill{display:inline-flex;align-items:center;gap:6px;background:#2c2d34;border:1px solid var(--line);border-radius:7px;padding:3px 9px;font-size:12.5px;color:var(--tx2)}
+.plus{color:var(--tx3);font-size:15px}
+.icon{width:26px;height:26px;border-radius:7px;background:linear-gradient(160deg,#3a3b44,#2a2b31);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:12px}
+.spark{color:var(--warn);font-size:14px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:#2b2c33;border:1px solid #3d4a6b;border-radius:999px;padding:4px 11px;font-size:12.5px;cursor:pointer}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px #3ecf8e88}
+.chip b{font-weight:600}
+.chip .caret{color:var(--tx3);font-size:10px}
+.model{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--tx);font-size:13px}
+.model .hi{color:var(--acc);font-size:12px}
+.ring{width:15px;height:15px;border-radius:50%;border:2px solid #4a4b55}
+/* ---- 弹框 ---- */
+.pop{width:430px;background:var(--panel2);border:1px solid #3a3b44;border-radius:12px;box-shadow:0 18px 48px #0009;overflow:hidden}
+.pop-h{display:flex;align-items:center;gap:8px;padding:12px 14px 0 14px}
+.pop-h .t{font-size:13px;font-weight:600}
+.pop-h .sub{font-size:11.5px;color:var(--tx3);margin-left:auto}
+.tabs{display:flex;gap:6px;padding:10px 14px 0 14px;border-bottom:1px solid var(--line)}
+.tab{padding:6px 12px;border-radius:8px 8px 0 0;font-size:12.5px;color:var(--tx2);cursor:pointer;border:1px solid transparent;border-bottom:none;position:relative;top:1px}
+.tab.on{color:var(--tx);background:var(--panel2);border-color:var(--line);box-shadow:inset 0 2px 0 var(--acc)}
+.tab .n{color:var(--tx3);margin-left:4px;font-size:11.5px}
+.list{padding:6px 8px 4px 8px;max-height:258px;overflow:auto}
+.it{display:flex;align-items:center;gap:10px;padding:8px 8px;border-radius:9px}
+.it{cursor:pointer}
+.it:hover{background:#2e2f37}
+.it.cur{cursor:default}
+.curmark{font-size:11.5px;color:#8ea6e8;background:#252a3a;border:1px solid #3a466b;border-radius:6px;padding:2px 8px}
+.chev{color:var(--tx3);font-size:16px;line-height:1;padding:0 2px}
+.it.cur{background:#2a2b3a;box-shadow:inset 0 0 0 1px #3d4a6b}
+.av{width:26px;height:26px;border-radius:8px;background:#33343d;display:flex;align-items:center;justify-content:center;font-size:11.5px;color:var(--tx2);flex:0 0 auto}
+.nm{font-size:13px;display:flex;align-items:center;gap:6px}
+.nm .tag{font-size:10.5px;padding:1px 5px;border-radius:5px;background:#2f3a53;color:#9fb6e8;border:1px solid #3d4a6b}
+.cre{font-size:11.5px;color:var(--tx3);margin-top:2px;font-variant-numeric:tabular-nums}
+.cre b{color:var(--tx);font-weight:600}
+.bar{height:3px;border-radius:2px;background:#33343d;margin-top:5px;overflow:hidden}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,#6d5df0,#8b7cf6)}
+.st{margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.badge{font-size:11px;padding:1.5px 7px;border-radius:999px;border:1px solid}
+.b-ok{color:#5fe0a8;border-color:#2f6b52;background:#1d332a}
+.b-cool{color:#e8c06a;border-color:#6b5a2f;background:#332d1d}
+.b-off{color:#9b9ca6;border-color:#44454e;background:#2a2b31}
+.use{font-size:12px;padding:4px 10px;border-radius:7px;background:#32333c;border:1px solid var(--line);color:var(--tx2);cursor:pointer}
+.use:hover{color:var(--tx);border-color:#4a4b55}
+.use.primary{background:#3a3357;border-color:#4b3f7a;color:#cdc4ff}
+.foot{border-top:1px solid var(--line);padding:9px 14px;display:flex;align-items:center;gap:10px;background:#202127}
+.foot .hint{font-size:11px;color:var(--tx3);display:flex;gap:6px;align-items:center}
+.foot .btn{margin-left:auto;font-size:12px;padding:5px 11px;border-radius:7px;border:1px solid var(--line);background:#2b2c33;color:var(--tx2);cursor:pointer}
+.note{margin-top:10px;font-size:11.5px;color:var(--tx3);display:flex;gap:6px;align-items:flex-start;line-height:1.45}
+.note .i{color:var(--warn)}
+.grid{display:flex;gap:26px;align-items:flex-start}
+</style></head><body>
+<h1>WorkBuddy2API · 输入区账号徽标 + 账号选择面板（UI 原型 v1）</h1>
+<div class="wrap">
+
+  <div class="card">
+    <div class="cap">① 输入区（收起态）—— 徽标显示「账号名 · 当前余额」，点击展开选择面板</div>
+    <div class="row">
+      <span class="pill">完全权限</span><span class="plus">＋</span>
+      <span class="icon">◍</span><span style="font-size:13px">普通模式</span>
+      <span class="spark">✦</span>
+      <span class="chip"><span class="dot"></span><span>账号一</span><span style="color:var(--tx3)">·</span><b>4,531</b><span class="caret">▾</span></span>
+      <span class="model">Deepseek-V4.1-Flash <span class="hi">High</span> <span class="ring"></span></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cap">② 点击徽标 → 账号面板（CN 标签页）</div>
+    <div class="pop">
+      <div class="pop-h"><span class="t">选择账号</span><span class="sub">按最近使用排序 · 5 个可用</span></div>
+      <div class="tabs">
+        <div class="tab on">CN<span class="n">5</span></div>
+        <div class="tab">Global<span class="n">1</span></div>
+      </div>
+      <div class="list">
+        <div class="it cur">
+          <div class="av">账</div>
+          <div style="min-width:0">
+            <div class="nm">账号一 <span class="tag">当前</span></div>
+            <div class="cre"><b>4,531</b> / 4,600 积分 · 上次 17:19</div>
+            <div class="bar"><i style="width:98%"></i></div>
+          </div>
+          <div class="st"><span class="badge b-ok">可用</span><span class="curmark">使用中</span></div>
+        </div>
+        <div class="it">
+          <div class="av">账</div>
+          <div style="min-width:0">
+            <div class="nm">账号二</div>
+            <div class="cre"><b>3,961</b> / 4,100 积分 · 上次 16:02</div>
+            <div class="bar"><i style="width:88%"></i></div>
+          </div>
+          <div class="st"><span class="badge b-ok">可用</span><span class="chev">›</span></div>
+        </div>
+        <div class="it">
+          <div class="av">账</div>
+          <div style="min-width:0">
+            <div class="nm">账号三</div>
+            <div class="cre"><b>1,161</b> / 2,000 积分 · 上次 12:40</div>
+            <div class="bar"><i style="width:52%"></i></div>
+          </div>
+          <div class="st"><span class="badge b-cool">冷却中 18:25</span><span class="chev">›</span></div>
+        </div>
+        <div class="it">
+          <div class="av">账</div>
+          <div style="min-width:0">
+            <div class="nm">账号四</div>
+            <div class="cre"><b>3,994</b> / 4,000 积分 · 上次 10-31</div>
+            <div class="bar"><i style="width:99%"></i></div>
+          </div>
+          <div class="st"><span class="badge b-off">已禁用</span><span class="chev">›</span></div>
+        </div>
+      </div>
+      <div class="foot">
+        <span class="hint"><span class="i">ⓘ</span> 只影响后续请求，不中断进行中的会话</span>
+        <button class="btn">刷新余额</button>
+      </div>
+    </div>
+    <div class="note"><span class="i">⚠</span><span>「刷新余额」有 5 分钟节流 + 单飞保护；默认复用网关每 5 分钟的定时刷新，不额外打上游。</span></div>
+  </div>
+
+  <div class="card">
+    <div class="cap">③ Global 标签页 —— 两域积分不互通，各自独立选择</div>
+    <div class="grid">
+      <div class="pop">
+        <div class="pop-h"><span class="t">选择账号</span><span class="sub">按最近使用排序 · 1 个可用</span></div>
+        <div class="tabs">
+          <div class="tab">CN<span class="n">5</span></div>
+          <div class="tab on">Global<span class="n">1</span></div>
+        </div>
+        <div class="list">
+          <div class="it cur">
+            <div class="av">账</div>
+            <div style="min-width:0">
+              <div class="nm">账号五 <span class="tag">当前</span></div>
+              <div class="cre"><b>350</b> 积分 · 上次 昨天</div>
+              <div class="bar"><i style="width:35%"></i></div>
+            </div>
+            <div class="st"><span class="badge b-ok">可用</span><span class="curmark">使用中</span></div>
+          </div>
+        </div>
+        <div class="foot">
+          <span class="hint"><span class="i">ⓘ</span> Global 只有 1 个账号，无需切换</span>
+          <button class="btn">刷新余额</button>
+        </div>
+      </div>
+      <div style="flex:1;font-size:12px;color:var(--tx3);line-height:1.7">
+        <div style="color:var(--tx2);margin-bottom:6px">交互规则</div>
+        · <b style="color:var(--tx2)">点击任意账号行</b>即可切换 → 该域内其余账号 pause，只留选中的（立即生效、不断流）<br>
+        · 恢复全部账号 / 改策略 → <b style="color:var(--tx2)">设置 → WorkBuddy2API → 账号</b><br>
+        · 「使用中」是状态标记，不可点；徽标始终显示该域当前账号及余额<br>
+        · 冷却/禁用账号置灰但仍可见，便于判断为什么没轮到它
+      </div>
+    </div>
+  </div>
+
+</div></body></html>

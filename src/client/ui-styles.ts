@@ -321,6 +321,35 @@ export const PAGE_CSS = `
 .cs-creditBadge{display:inline-flex;align-items:center;gap:4px;background:none;border:0;padding:0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .cs-creditBadge b{font-weight:600;color:var(--dsw-alias-label-primary)}
 .cs-tableWrap{overflow-x:auto}
+/* Composer account chip + its picker. Same visual language as the providers-hub
+   badge: one muted line, a state dot, the figure in label-primary; the picker is
+   a small elevated card with hoverable rows. All colours come from DSH aliases so
+   the chip follows the active theme instead of hard-coding a palette. */
+.wb2aChip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;margin:0 1px;border:0;border-radius:999px;background:var(--dsw-alias-bg-secondary,rgba(255,255,255,0.08));color:var(--dsw-alias-label-primary);cursor:pointer;font:inherit;font-size:12.5px;line-height:16px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.wb2aChip:hover{background:var(--dsw-alias-bg-tertiary,rgba(255,255,255,0.14))}
+.wb2aChip[aria-expanded="true"]{background:var(--dsw-alias-bg-tertiary,rgba(255,255,255,0.14))}
+.wb2aDot{flex:none;width:7px;height:7px;border-radius:999px;background:var(--dsw-alias-state-success-primary,#3ddc97)}
+.wb2aDot[data-tone="muted"]{background:var(--dsw-alias-label-tertiary,#71727c)}
+.wb2aDot[data-tone="warn"]{background:var(--dsw-alias-state-warn-primary,#f5b544)}
+.wb2aChip b{font-weight:600;color:var(--dsw-alias-label-primary);max-width:132px;overflow:hidden;text-overflow:ellipsis}
+.wb2aChipNum{color:var(--dsw-alias-label-primary);font-weight:600}
+.wb2aChipUnit{color:var(--dsw-alias-label-secondary)}
+.wb2aPop{position:fixed;z-index:2147483000;width:320px;max-height:58vh;overflow-y:auto;padding:10px 10px 8px;border-radius:12px;border:1px solid var(--dsw-alias-border-default,rgba(255,255,255,0.12));background:var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-module-platform,#212227));box-shadow:0 18px 48px rgba(0,0,0,0.45);color:var(--dsw-alias-label-primary);font-size:12px;line-height:1.45}
+.wb2aPopHead{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.wb2aTabs{display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:var(--dsw-alias-bg-secondary,rgba(255,255,255,0.06))}
+.wb2aTab{border:0;border-radius:6px;background:none;color:var(--dsw-alias-label-secondary);cursor:pointer;font:inherit;font-size:11px;padding:2px 8px}
+.wb2aTab[data-on="true"]{background:var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-module-platform,#2c2d34));color:var(--dsw-alias-label-primary);box-shadow:0 1px 0 rgba(0,0,0,0.25)}
+.wb2aRow{display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.wb2aRow:hover{background:var(--dsw-alias-bg-secondary,rgba(255,255,255,0.07))}
+.wb2aRow[data-pinned="true"]{background:var(--dsw-alias-bg-secondary,rgba(255,255,255,0.07))}
+.wb2aRow:disabled{cursor:default}
+.wb2aRowName{max-width:150px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.wb2aRowNum{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary)}
+.wb2aRowTag{font-size:11px;color:var(--dsw-alias-label-tertiary)}
+.wb2aFoot{display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--dsw-alias-border-secondary,rgba(255,255,255,0.1))}
+.wb2aLink{border:0;background:none;color:var(--dsw-alias-link,#9ecbff);font:inherit;font-size:11px;padding:0;cursor:pointer}
+.wb2aTurnCost{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;line-height:16px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;white-space:nowrap}
+.wb2aFootNote{margin-top:6px;font-size:11px;color:var(--dsw-alias-label-tertiary)}
 .cs-table{width:100%;border-collapse:collapse;font-size:13px}
 .cs-table th{text-align:left;font-weight:500;color:var(--dsw-alias-label-tertiary);font-size:12px;padding:6px 8px;border-bottom:.5px solid var(--dsw-alias-border-l2);white-space:nowrap}
 .cs-table td{padding:9px 8px;border-bottom:.5px solid var(--dsw-alias-border-l2);vertical-align:middle}

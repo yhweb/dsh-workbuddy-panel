@@ -197,6 +197,37 @@ function strList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
 
+/** One session→account binding, as the kernel's session-sticky table reports it. */
+/** Session-scoped spend, as the kernel reports it (its own ledger). */
+export interface PanelSessionCredits {
+  /** False when the kernel has no record for this session yet. */
+  found: boolean
+  credits: number
+  requests: number
+  lastAt?: string
+}
+
+export interface PanelBinding {
+  key: string
+  uid: string
+  lastActive?: string
+}
+
+/** Decode the bindings array, dropping entries missing a key or a uid. */
+function parseBindings(value: unknown): PanelBinding[] {
+  if (!Array.isArray(value)) return []
+  const list: PanelBinding[] = []
+  for (const entry of value) {
+    if (!isJsonObject(entry)) continue
+    const key = str(entry['key'])
+    const uid = str(entry['uid'])
+    if (key === undefined || uid === undefined) continue
+    const lastActive = timeField(entry['lastActive'])
+    list.push(lastActive === undefined ? { key, uid } : { key, uid, lastActive })
+  }
+  return list
+}
+
 /** Decode one account row. */
 export function parseAccount(value: unknown): PanelAccount | undefined {
   if (!isJsonObject(value)) return undefined
@@ -434,6 +465,33 @@ export class PanelClient {
       }
     }
     return { done: false, ...str(body['message']) === undefined ? {} : { message: str(body['message']) } }
+  }
+
+  /** The session→account bindings; empty when the kernel keeps none. */
+  /** Session-scoped spend, read from the kernel's own ledger. */
+  async sessionCredits(key: string): Promise<PanelSessionCredits> {
+    const body = await this.request(`/sessions/credits?key=${encodeURIComponent(key)}`, { timeoutMs: 3_000 })
+    const credits = typeof body['credits'] === 'number' ? body['credits'] : 0
+    const requests = typeof body['requests'] === 'number' ? body['requests'] : 0
+    const lastAt = typeof body['lastAt'] === 'string' ? body['lastAt'] : undefined
+    return { found: body['found'] === true, credits, requests, ...lastAt === undefined ? {} : { lastAt } }
+  }
+
+  async sessionBindings(): Promise<PanelBinding[]> {
+    const body = await this.request('/sessions/bindings', { timeoutMs: 3_000 })
+    return parseBindings(body['bindings'])
+  }
+
+  /** Pin one session key to one account; answers with the new binding list. */
+  async bindSession(key: string, uid: string): Promise<PanelBinding[]> {
+    const body = await this.request('/sessions/bind', { method: 'POST', body: { key, uid } })
+    return parseBindings(body['bindings'])
+  }
+
+  /** Release one session key so the pool allocates it again. */
+  async unbindSession(key: string): Promise<PanelBinding[]> {
+    const body = await this.request('/sessions/unbind', { method: 'POST', body: { key } })
+    return parseBindings(body['bindings'])
   }
 
   /** Login regions the panel offers for the international realm. */

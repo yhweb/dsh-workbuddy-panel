@@ -1,7 +1,6 @@
-import { c as KernelUpdateStatus, d as ServerStatus, o as GatewayStatus, r as GatewayHost, s as KernelCheckCadence } from "./gateway-contract-C6PWwSdB.js";
+import { c as KernelUpdateStatus, d as ServerStatus, o as GatewayStatus, r as GatewayHost, s as KernelCheckCadence } from "./gateway-contract-Dx2NgcNg.js";
 import z from "@deepseek-ai/schemastery";
 import { Context, Service } from "@deepseek-ai/cordis";
-//#region src/gateway.d.ts
 /** Host-row composition defaults. */
 declare const Config: z<Schemastery.ObjectS<NoInfer<{
   /** Loopback port the gateway listens on and the health probe uses. */
@@ -204,5 +203,4 @@ declare class GatewayHostService extends Service implements GatewayHost {
   /** Start once the subprocess seam is available; never spawn from the panel. */
   private startIfConfigured;
 }
-//#endregion
 export { Config, GatewayHostService as default };

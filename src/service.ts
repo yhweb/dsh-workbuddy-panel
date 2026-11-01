@@ -30,9 +30,11 @@ import type { CatalogModel, ModelOverride, ModelRegion, ThinkingLevel } from './
 import type { ModelOverridesStore } from './overrides-store.ts'
 import type { ConnectionSettings, ConnectionStore } from './settings-store.ts'
 import { PanelClient, PanelError, safeMessage } from './panel-client.ts'
-import type { AccountOp, BulkOp, PanelAccount, PanelModel, PanelOverview } from './panel-client.ts'
+import type { AccountOp, BulkOp, PanelAccount, PanelBinding, PanelModel, PanelOverview, PanelSessionCredits } from './panel-client.ts'
 import type { GatewayHost, GatewayState, GatewayStatus, KernelCheckCadence, KernelUpdateStatus, ServerStatus } from './gateway-contract.ts'
 import { serverManifest } from './server-release.ts'
+import { readAccountDefaults, writeAccountDefaults } from './account-defaults.ts'
+import type { AccountDefaults } from './account-defaults.ts'
 
 /** Format version of the cached catalog document. */
 const CACHE_VERSION = 2
@@ -129,6 +131,32 @@ export interface ProviderRouteState {
 }
 
 /** Everything the browser surfaces render. */
+/** One session→account binding, as the browser reads it. */
+export interface WebSessionBinding {
+  key: string
+  uid: string
+  lastActive?: string
+}
+
+/**
+ * Session-level account binding support.
+ *
+ * "supported" is absent until a read has an opinion: a kernel that predates the
+ * patch answers 404, and the chip says so instead of offering a button that
+ * cannot work.
+ */
+export interface WebSessions {
+  supported?: boolean
+  bindings: readonly WebSessionBinding[]
+  /**
+   * The account the user last picked by hand, per realm. A new conversation has
+   * no binding of its own, so the chip re-creates the pin from here; deleting
+   * the plugin's `account-defaults.json` returns it to pool allocation.
+   */
+  defaults: { cn?: string, global?: string }
+  error?: string
+}
+
 export interface WebStatus {
   ok: true
   version: string
@@ -161,6 +189,8 @@ export interface WebStatus {
   client: WebClientProbe
   /** The gateway's usage ledger, folded into one window. */
   usage: UsageSummary
+  /** Which account each conversation is pinned to, when the kernel keeps that. */
+  sessions: WebSessions
   counts: {
     total: number
     healthy: number
@@ -192,6 +222,8 @@ export interface ActionOutcome {
   ok: boolean
   message?: string
   status?: WebStatus
+  /** Present on `session-credits`: this session's spend as the kernel accounts it. */
+  credits?: PanelSessionCredits
 }
 
 /** Dependencies the service reads. */
@@ -388,6 +420,13 @@ export class WorkBuddy2ApiService {
   private inFlight?: Promise<void>
   /** Whether the last gateway read actually reached it. */
   private lastReadOk = false
+  /** Session to account bindings last read from the kernel, if it has them. */
+  private sessions: readonly PanelBinding[] = []
+  /** True once the kernel answered, false when it refused the route, absent before the first read. */
+  private sessionsSupported?: boolean
+  private sessionsError?: string
+  /** The account the user picked by hand; survives restarts and applies to new sessions. */
+  private defaults: AccountDefaults = readAccountDefaults()
   private emptyModelReads = 0
   /** Consecutive reads that omitted a realm, keyed by realm. */
   private realmGaps = new Map<ModelRegion, number>()
@@ -475,10 +514,16 @@ export class WorkBuddy2ApiService {
       this.snapshot = { ...this.snapshot, error: 'no gateway address configured' }
       return
     }
-    const [overview, models] = await Promise.allSettled([
+    const [overview, models, bindings] = await Promise.allSettled([
       this.options.client.overview(),
       this.options.client.models(),
+      // Wrapped so a client without the call rejects this leg instead of
+      // throwing out of the array literal.
+      Promise.resolve().then(() => this.options.client.sessionBindings()),
     ])
+    // Bindings are a third, independent read: a kernel without the endpoints
+    // must not make the overview look failed.
+    this.noteBindings(bindings)
     if (overview.status === 'fulfilled' && models.status === 'fulfilled') {
       this.lastReadOk = true
       this.snapshot = {
@@ -660,6 +705,15 @@ export class WorkBuddy2ApiService {
       sync: this.sync,
       client: this.clientProbe,
       usage: this.usage(),
+      sessions: {
+        ...this.sessionsSupported === undefined ? {} : { supported: this.sessionsSupported },
+        bindings: this.sessions.map(binding => ({ ...binding })),
+        defaults: {
+          ...this.defaults.cn === undefined ? {} : { cn: this.defaults.cn },
+          ...this.defaults.global === undefined ? {} : { global: this.defaults.global },
+        },
+        ...this.sessionsError === undefined ? {} : { error: this.sessionsError },
+      },
       counts,
       accounts: (overview?.accounts ?? []).map(webAccount),
       models: this.catalog.map(webModel),
@@ -961,6 +1015,94 @@ export class WorkBuddy2ApiService {
     try {
       await this.options.client.accountOp(uid, op)
       return this.settled({ ok: true, message: op + ' sent' })
+    } catch (error: unknown) {
+      return { ok: false, message: safeMessage(error), status: this.status() }
+    }
+  }
+
+  /**
+   * Fold the binding read into state without ever failing the overview.
+   *
+   * A kernel without the endpoints answers 404 and is remembered, so the chip
+   * can say "needs a newer kernel" once instead of probing a dead route on
+   * every poll. Any other failure is reported but keeps the last list.
+   */
+  private noteBindings(result: PromiseSettledResult<readonly PanelBinding[]>): void {
+    if (result.status === 'fulfilled') {
+      this.sessions = result.value
+      this.sessionsSupported = true
+      this.sessionsError = undefined
+      return
+    }
+    const status = result.reason instanceof PanelError ? result.reason.status : undefined
+    if (status === 404 || status === 501) {
+      this.sessionsSupported = false
+      this.sessionsError = undefined
+      this.sessions = []
+      return
+    }
+    this.sessionsError = safeMessage(result.reason)
+  }
+
+  /** The realm an account belongs to, read from the last overview. */
+  private realmOfAccount(uid: string): ModelRegion | undefined {
+    const accounts = this.snapshot.overview?.accounts ?? []
+    const account = accounts.find(entry => entry.uid === uid)
+    if (account === undefined) return undefined
+    return account.realm === 'global' ? 'global' : 'cn'
+  }
+
+  /** Persist one manual pick as the realm's default. */
+  private rememberPick(uid: string): void {
+    const realm = this.realmOfAccount(uid)
+    if (realm === undefined) return
+    const next: AccountDefaults = { version: 1 }
+    if (this.defaults.cn !== undefined) next.cn = this.defaults.cn
+    if (this.defaults.global !== undefined) next.global = this.defaults.global
+    next[realm] = uid
+    this.defaults = next
+    writeAccountDefaults(next)
+  }
+
+  /** Drop the realm's default, so new sessions go back to pool allocation. */
+  private forgetPick(uid: string): void {
+    const realm = this.realmOfAccount(uid)
+    if (realm === undefined) return
+    const next: AccountDefaults = { version: 1 }
+    if (this.defaults.cn !== undefined) next.cn = this.defaults.cn
+    if (this.defaults.global !== undefined) next.global = this.defaults.global
+    delete next[realm]
+    this.defaults = next
+    writeAccountDefaults(next)
+  }
+
+  /** Pin one session key to one account: the pool stops rotating that session. */
+  async bindSession(key: string, uid: string): Promise<ActionOutcome> {
+    try {
+      await this.options.client.bindSession(key, uid)
+      this.rememberPick(uid)
+      return this.settled({ ok: true, message: 'session bound' })
+    } catch (error: unknown) {
+      return { ok: false, message: safeMessage(error), status: this.status() }
+    }
+  }
+
+  /** Read one session's spend from the kernel's ledger (upstream `usage.credit`). */
+  async sessionCredits(key: string): Promise<ActionOutcome> {
+    try {
+      return { ok: true, credits: await this.options.client.sessionCredits(key) }
+    } catch (error: unknown) {
+      return { ok: false, message: safeMessage(error), status: this.status() }
+    }
+  }
+
+  /** Release one session key back to the pool's own allocation. */
+  async unbindSession(key: string): Promise<ActionOutcome> {
+    try {
+      const previous = this.sessions.find(binding => binding.key === key)
+      await this.options.client.unbindSession(key)
+      if (previous !== undefined) this.forgetPick(previous.uid)
+      return this.settled({ ok: true, message: 'session released' })
     } catch (error: unknown) {
       return { ok: false, message: safeMessage(error), status: this.status() }
     }

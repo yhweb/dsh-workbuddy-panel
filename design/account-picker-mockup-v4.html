@@ -1,0 +1,71 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>
+:root{--bg:#141518;--panel:#1d1e22;--line:#33343b;--tx:#e9e9ec;--tx2:#9b9ca6;--tx3:#71727c;--acc:#8b7cf6;--ok:#3ddc97;--warn:#f5b544}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--tx);font:14px/1.5 "Segoe UI","Microsoft YaHei",system-ui,sans-serif;padding:24px 28px}
+h1{font-size:13px;font-weight:600;color:var(--tx3);margin-bottom:14px;letter-spacing:.3px}
+.cap{font-size:12px;color:var(--tx3);margin:0 0 8px 2px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:20px}
+/* 输入区一行 */
+.row{display:flex;align-items:center;gap:10px;background:#232428;border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.pill2{background:#2c2d34;border:1px solid var(--line);border-radius:7px;padding:3px 9px;font-size:12.5px;color:var(--tx2)}
+.plus{color:var(--tx3)}
+.icon{width:24px;height:24px;border-radius:7px;background:#33343c;display:flex;align-items:center;justify-content:center;font-size:11px}
+.spark{color:var(--warn)}
+/* 目标样式：胶囊徽标 */
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:#2b2c33;border:0;font-size:12.5px;line-height:16px;color:var(--tx);cursor:pointer;font-variant-numeric:tabular-nums;white-space:nowrap}
+.chip:hover{background:#34353d}
+.chip .dot{width:7px;height:7px;border-radius:999px;background:var(--ok);flex:none}
+.chip b{font-weight:600}
+.chip .num{font-weight:600}
+.chip .unit{color:var(--tx2)}
+.model{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px}
+.model .hi{color:var(--acc);font-size:12px}
+.ring{width:14px;height:14px;border-radius:50%;border:2px solid #4a4b55}
+.pct{color:var(--ok);font-size:12px}
+/* 弹层：DSH 主题变量同款观感 */
+.pop{width:320px;max-height:58vh;overflow:auto;padding:10px 10px 8px;border-radius:12px;border:1px solid var(--line);background:#212227;box-shadow:0 18px 48px #0008;font-size:12px}
+.popHead{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.tabs{display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:#2a2b31}
+.tab{border:0;border-radius:6px;background:none;color:var(--tx2);font-size:11px;padding:2px 8px;cursor:pointer}
+.tab.on{background:#33343c;color:var(--tx)}
+.flex{flex:1}
+.tag{font-size:11px;color:var(--tx3)}
+.rw{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer}
+.rw:hover{background:#2a2b31}
+.rw.pin{background:#2a2b31}
+.rw .dot{width:6px;height:6px;border-radius:999px;background:var(--ok);flex:none}
+.rw .nm{max-width:150px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.rw .cred{font-variant-numeric:tabular-nums}
+.foot{display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid #2e2f36}
+.link{color:#9ecbff;font-size:11px;cursor:pointer}
+.fnote{margin-top:6px;font-size:11px;color:var(--tx3)}
+</style></head><body>
+<h1>WorkBuddy2API · 输入区账号徽标（常驻样式 v4 · 按你的截图改成 pill）</h1>
+
+<div class="card">
+  <div class="cap">① 输入区常驻态 —— 深色胶囊 + 绿点 + 「账号 · 数字积分」</div>
+  <div class="row">
+    <span class="pill2">完全权限</span><span class="plus">＋</span>
+    <span class="icon">◍</span><span style="font-size:13px">普通模式</span>
+    <span class="spark">✦</span>
+    <button class="chip"><span class="dot"></span><b>账号一</b><span class="unit">·</span><span class="num">4,531</span><span class="unit">积分</span></button>
+    <span class="model">Deepseek-V4.1-Flash <span class="hi">High</span><span class="ring"></span><span class="pct">5%</span></span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="cap">② 点开后：账号面板（CN / Global 标签，行可点，底部解除与刷新）</div>
+  <div class="pop">
+    <div class="popHead">
+      <span class="tabs"><button class="tab on">CN</button><button class="tab">Global</button></span>
+      <span class="flex"></span><span class="tag">本会话用哪个账号</span>
+    </div>
+    <div class="rw pin"><span class="dot"></span><span class="nm"><b>账号一</b></span><span class="flex"></span><span class="cred">4,531 积分</span><span class="tag">使用中</span></div>
+    <div class="rw"><span class="dot"></span><span class="nm">GrowthRings</span><span class="flex"></span><span class="cred">3,961 积分</span></div>
+    <div class="rw"><span class="dot" style="background:var(--warn)"></span><span class="nm">大象</span><span class="flex"></span><span class="cred">1,161 积分</span></div>
+    <div class="rw"><span class="dot" style="background:#71727c"></span><span class="nm">Deadbeat</span><span class="flex"></span><span class="cred">3,994 积分</span></div>
+    <div class="foot"><span class="link">解除固定</span><span class="flex"></span><span class="link">刷新余额</span></div>
+    <div class="fnote">点一个账号，本会话之后发起的请求就固定用它。</div>
+  </div>
+</div>
+</body></html>
