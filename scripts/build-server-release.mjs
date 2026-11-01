@@ -14,7 +14,23 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gzipSync } from 'node:zlib'
 
-const version = process.argv[2] ?? '1.14.0-panel'
+// 用法：
+//   node scripts/build-server-release.mjs 1.15.1-panel            # 全平台 go build
+//   node scripts/build-server-release.mjs --version 1.15.1-panel \
+//     --base https://github.com/<owner>/<repo>/releases/download \
+//     --binary <已编译好的可执行文件> --key win32-x64              # 只打包现成二进制
+const flags = {}
+for (let i = 2; i < process.argv.length; i += 1) {
+  const arg = process.argv[i]
+  if (!arg.startsWith('--')) continue
+  const next = process.argv[i + 1]
+  flags[arg.slice(2)] = next !== undefined && !next.startsWith('--') ? ((i += 1), next) : 'true'
+}
+const positional = process.argv[2]?.startsWith('--') ? undefined : process.argv[2]
+const version = flags.version ?? positional ?? '1.14.0-panel'
+const releaseBase = flags.base ?? 'https://github.com/functy23/dsh-workbuddy-panel/releases/download'
+const prebuilt = flags.binary
+const prebuiltKey = flags.key ?? 'win32-x64'
 const source = fileURLToPath(new URL('../upstream/workbuddy2api-panel', import.meta.url))
 const dist = fileURLToPath(new URL('../dist', import.meta.url))
 const targets = [
@@ -26,16 +42,34 @@ const targets = [
   // 两者不同源，写成 goos:'win32' 会让 go build 直接报 unsupported GOOS/GOARCH pair。
   { goos: 'windows', goarch: 'amd64', key: 'win32-x64', ext: '.exe' },
 ]
-if (!existsSync(source)) {
+if (prebuilt === undefined && !existsSync(source)) {
   console.error('missing upstream/workbuddy2api-panel')
   process.exit(1)
 }
 mkdirSync(dist, { recursive: true })
 const assets = {}
-for (const target of targets) {
+/** 把一段可执行文件字节压成 .gz 写进 dist，并登记到 assets。 */
+function pack(key, stem, bytes) {
+  const compressed = gzipSync(bytes, { level: 9 })
+  writeFileSync(join(dist, stem + '.gz'), compressed)
+  assets[key] = {
+    asset: stem + '.gz',
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+    size: bytes.length,
+    downloadSize: compressed.length,
+  }
+  console.log('packed ' + key + ' size=' + String(bytes.length) + ' sha256=' + assets[key].sha256)
+}
+if (prebuilt !== undefined) {
+  if (!existsSync(prebuilt)) {
+    console.error('missing prebuilt binary: ' + prebuilt)
+    process.exit(1)
+  }
+  pack(prebuiltKey, 'workbuddy2api-' + version + '-' + prebuiltKey, readFileSync(prebuilt))
+}
+for (const target of prebuilt === undefined ? targets : []) {
   const stem = 'workbuddy2api-' + version + '-' + target.key
   const raw = join(dist, stem + target.ext)
-  const gz = join(dist, stem + '.gz')
   console.log('building ' + target.key)
   execFileSync('go', [
     'build',
@@ -55,16 +89,7 @@ for (const target of targets) {
       GOARCH: target.goarch,
     },
   })
-  const bytes = readFileSync(raw)
-  const sha256 = createHash('sha256').update(bytes).digest('hex')
-  const compressed = gzipSync(bytes, { level: 9 })
-  writeFileSync(gz, compressed)
-  assets[target.key] = {
-    asset: stem + '.gz',
-    sha256,
-    size: bytes.length,
-    downloadSize: compressed.length,
-  }
+  pack(target.key, stem, readFileSync(raw))
 }
 const manifest = {
   schemaVersion: 1,
@@ -72,7 +97,7 @@ const manifest = {
   apiVersion: 1,
   minPanel: '0.4.0',
   releaseTag: 'server-v' + version,
-  releaseBaseUrl: 'https://github.com/functy23/dsh-workbuddy-panel/releases/download',
+  releaseBaseUrl: releaseBase,
   assets,
 }
 const document = JSON.stringify(manifest, null, 2) + '\n'
