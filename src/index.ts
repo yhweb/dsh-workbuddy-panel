@@ -42,6 +42,11 @@ import { registerGatewayRoutes } from './routes.ts'
 import { WORKBUDDY2API_GATEWAY_VERSION } from './version.ts'
 import { piAiVersionSummary, piAiVersionWarning, resolvedPiAiVersion } from './pi-ai-version.ts'
 import { pluginDataDir } from './paths.ts'
+import {
+  WORKBUDDY2API_CATALOG_SERVICE,
+  WORKBUDDY2API_CATALOG_SERVICE_VERSION,
+  createWorkBuddy2ApiCatalog,
+} from './catalog-service.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'llm-workbuddy2api-gateway'
@@ -138,6 +143,9 @@ export function apply(ctx: Context, config: Config): void {
   const log = ctx.logger
   const controlKey = randomBytes(24).toString('hex')
 
+  /** Bumped on every announced catalog change; backs the provided service's revision(). */
+  let catalogRevision = 0
+
   const connection = new ConnectionStore(undefined, {
     ...DEFAULT_CONNECTION,
     panelUrl: 'http://127.0.0.1:' + String(config.port),
@@ -206,6 +214,7 @@ export function apply(ctx: Context, config: Config): void {
       // host asks that snapshot to resolve a model before it asks the provider
       // for the live list, and a snapshot built before the model existed
       // answers UNKNOWN_MODEL until the profile map identity changes.
+      catalogRevision += 1
       adapterHandle?.invalidate()
       try {
         ctx.emit('llm/adapters-updated')
@@ -214,6 +223,17 @@ export function apply(ctx: Context, config: Config): void {
       }
     },
   })
+
+  // Publish the catalog as a Cordis service so a sibling plugin can read the
+  // models and their credit prices without importing this panel. Registered on
+  // this row's fiber, so it unregisters automatically when the row unloads.
+  ctx.provide(
+    WORKBUDDY2API_CATALOG_SERVICE,
+    createWorkBuddy2ApiCatalog(
+      () => service.catalogModels(),
+      () => catalogRevision,
+    ),
+  )
 
   // The host row starts the process; the panel only reads the catalog once.
   void service.refresh().catch((error: unknown) => {
@@ -314,3 +334,19 @@ export { STATUS_PATH, ACTION_PATH, parseAction, runAction } from './routes.ts'
 export type { GatewayAction } from './routes.ts'
 export { WORKBUDDY2API_GATEWAY_VERSION } from './version.ts'
 export { gatewayConfigPath, gatewayWorkdir, pluginDataDir, serverRootDir } from './paths.ts'
+
+export {
+  WORKBUDDY2API_CATALOG_SERVICE,
+  WORKBUDDY2API_CATALOG_SERVICE_VERSION,
+  UNIT_CREDIT_PRICING,
+  parseCreditsMultiplier,
+  creditPriceOf,
+  toCatalogModel,
+  createWorkBuddy2ApiCatalog,
+} from './catalog-service.ts'
+export type {
+  WorkBuddy2ApiCatalog,
+  WorkBuddyCatalogModel,
+  CreditPrice,
+  UnitCreditPricing,
+} from './catalog-service.ts'

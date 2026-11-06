@@ -45,6 +45,7 @@ export type ClientAction =
   | { action: 'kernel-check' }
   | { action: 'kernel-install' }
   | { action: 'kernel-cadence', cadence: 'hourly' | 'never' }
+  | { action: 'device-refresh' }
   | { action: 'connection', panelUrl?: string, apiKey?: string, refreshSeconds?: number, syncHiddenToPanel?: boolean }
   | { action: 'auto-register', enabled: boolean }
   | { action: 'model', id: string, enabled?: boolean, effort?: ThinkingLevel | null }

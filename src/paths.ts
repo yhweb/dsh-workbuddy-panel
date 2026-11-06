@@ -82,6 +82,22 @@ export function connectionSettingsPath(): string {
   return join(pluginDataDir(), 'connection.json')
 }
 
+/**
+ * The device signals this machine's own WorkBuddy client can prove.
+ *
+ * The kernel cannot invent a device id or a device token: both are produced by
+ * the client installed here. The host row writes them next to the gateway's
+ * document so the kernel reads a path, not the plugin's internals.
+ */
+export function deviceSignalsPath(): string {
+  return join(gatewayWorkdir(), 'device-signals.json')
+}
+
+/** The bare device token, laid out for the kernel's `upstream.device_token_file`. */
+export function deviceTokenPath(): string {
+  return join(gatewayWorkdir(), 'device-token.txt')
+}
+
 /** Saved copy of the last successful catalog, for offline starts. */
 export function catalogCachePath(): string {
   return join(pluginDataDir(), 'catalog.json')

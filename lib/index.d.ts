@@ -1,4 +1,4 @@
-import { a as GatewayState, c as KernelUpdateStatus, d as ServerStatus, i as GatewayLogLine, l as ServerDownloadState, n as GATEWAY_HOST_SERVICE_VERSION, o as GatewayStatus, r as GatewayHost, s as KernelCheckCadence, t as GATEWAY_HOST_SERVICE, u as ServerDownloadStatus } from "./gateway-contract-Dx2NgcNg.js";
+import { a as GatewayLogLine, c as KernelCheckCadence, d as ServerDownloadStatus, f as ServerStatus, i as GatewayHost, l as KernelUpdateStatus, n as GATEWAY_HOST_SERVICE, o as GatewayState, r as GATEWAY_HOST_SERVICE_VERSION, s as GatewayStatus, t as DeviceSignalStatus, u as ServerDownloadState } from "./gateway-contract-r1m7qjxn.js";
 import z from "@deepseek-ai/schemastery";
 import { ImageAttachmentAccess } from "@deepseek-ai/dsh-llm";
 import "@earendil-works/pi-ai";
@@ -503,6 +503,13 @@ interface WebStatus {
   server: ServerStatus;
   /** Kernel discovery: cadence, last check, and the version the channel offers. */
   kernel: KernelUpdateStatus;
+  /**
+   * The device id and token this machine's WorkBuddy client produced.
+   *
+   * The kernel cannot invent either, so the page reports what was actually read
+   * and, when nothing was, why the client could not supply it.
+   */
+  deviceSignals: DeviceSignalStatus;
   panel: {
     connected: boolean;
     version?: string;
@@ -667,6 +674,13 @@ declare class WorkBuddy2ApiService {
   installKernelUpdate(): Promise<ActionOutcome>;
   /** Persist the automatic check cadence. */
   setKernelCadence(cadence: KernelCheckCadence): ActionOutcome;
+  /**
+   * Re-read the device id and mint a fresh device token.
+   *
+   * Minting needs the client's native library, which only the host row may load,
+   * so this is an action rather than something the poller does.
+   */
+  refreshDeviceSignals(): Promise<ActionOutcome>;
   /** Probe the gateway without changing the process. */
   testConnection(): Promise<ActionOutcome>;
   /** Enable or disable one model in the picker, and/or pin its reasoning level. */
@@ -820,6 +834,8 @@ type GatewayAction = {
   action: 'kernel-cadence';
   cadence: 'hourly' | 'never';
 } | {
+  action: 'device-refresh';
+} | {
   action: 'connection';
   panelUrl?: string;
   apiKey?: string;
@@ -898,6 +914,99 @@ declare function gatewayWorkdir(): string;
  */
 declare function serverRootDir(): string;
 declare function gatewayConfigPath(): string;
+/** The Cordis service name this plugin provides. */
+declare const WORKBUDDY2API_CATALOG_SERVICE = "workbuddy2apiCatalog";
+/** The contract generation consumers should compare against. */
+declare const WORKBUDDY2API_CATALOG_SERVICE_VERSION = 1;
+/**
+ * Base unit price: credits per million tokens at a x1.0 multiplier.
+ *
+ * Reverse-engineered from the gateway's usage ledger (the true per-request
+ * credit cost), so a consumer that multiplies by a model's multiplier lands on
+ * the number the gateway actually charges. Kept here, not in the ledger config,
+ * because this is the one place the panel can state it without depending on
+ * cost-meter's storage.
+ */
+declare const UNIT_CREDIT_PRICING: {
+  /** The unit the numbers are in. */
+  readonly currency: "credits";
+  /** All three figures are per one million tokens. */
+  readonly unit: "per-million-tokens";
+  /** The multiplier this base corresponds to. */
+  readonly multiplier: 1;
+  /** Cached (cache-hit) input tokens. */
+  readonly cacheHit: 2.5972727273;
+  /** Uncached (cache-miss) input tokens. */
+  readonly cacheMiss: 129.9227273;
+  /** Output tokens. */
+  readonly output: 519.4290909;
+};
+/** The base unit price shape. */
+type UnitCreditPricing = typeof UNIT_CREDIT_PRICING;
+/** Credits per million tokens for one model. */
+interface CreditPrice {
+  cacheHit: number;
+  cacheMiss: number;
+  output: number;
+}
+/** One model as the catalog service exposes it: the panel row plus its price. */
+interface WorkBuddyCatalogModel {
+  id: string;
+  name: string;
+  region: 'cn' | 'global';
+  description?: string;
+  vendor?: string;
+  /** The multiplier text the gateway advertises, e.g. `x0.17`. */
+  credits?: string;
+  /** The parsed multiplier, when the text carries a number. */
+  creditsMultiplier?: number;
+  contextLength: number;
+  maxOutputTokens: number;
+  efforts: readonly string[];
+  defaultEffort?: string;
+  enabled: boolean;
+  canDisableThinking: boolean;
+  supportsImages: boolean;
+  supportsReasoning: boolean;
+  onlyReasoning: boolean;
+  tags: readonly string[];
+  /** Credits per million tokens; absent when the model advertises no multiplier. */
+  price?: CreditPrice;
+}
+/** The service value consumers read. */
+interface WorkBuddy2ApiCatalog {
+  /** Contract generation; compare against {@link WORKBUDDY2API_CATALOG_SERVICE_VERSION}. */
+  readonly serviceVersion: number;
+  /** Monotonic revision; bumps on every catalog change so a consumer can skip unchanged reads. */
+  revision(): number;
+  /** The live catalog, priced. A fresh snapshot on each call. */
+  models(): readonly WorkBuddyCatalogModel[];
+  /** One model by id, or undefined when the gateway does not list it. */
+  model(id: string): WorkBuddyCatalogModel | undefined;
+  /** The base unit price (multiplier 1) every model's price is derived from. */
+  unitPricing(): UnitCreditPricing;
+}
+/**
+ * Parse a gateway multiplier like `x0.17` into its number.
+ *
+ * Accepts a bare number too (`0.17`), since the gateway has answered both
+ * shapes. A missing or unparseable value is `undefined` — "no price known" is
+ * different from "price zero".
+ */
+declare function parseCreditsMultiplier(credits: string | undefined): number | undefined;
+/** Price one model from its multiplier; undefined when the multiplier is unknown. */
+declare function creditPriceOf(multiplier: number | undefined): CreditPrice | undefined;
+/** Project one panel catalog row onto the service shape, adding the price. */
+declare function toCatalogModel(model: CatalogModel): WorkBuddyCatalogModel;
+/**
+ * Build the service value.
+ *
+ * `source` is the panel's own `catalogModels()` reader; `revision` a closure
+ * the panel bumps on every announced change. Keeping both as functions means
+ * the value never pins a stale catalog — a consumer that calls `models()` after
+ * a reload always sees the live one.
+ */
+declare function createWorkBuddy2ApiCatalog(source: () => readonly CatalogModel[], revision: () => number): WorkBuddy2ApiCatalog;
 /** Stable Cordis plugin name. */
 declare const name = "llm-workbuddy2api-gateway";
 /** The model registry required before the route can register. */
@@ -925,4 +1034,4 @@ interface Config {
 }
 /** Wire the plugin into the host. */
 declare function apply(ctx: Context, config: Config): void;
-export { ACTION_PATH, type AccountOp, type ActionOutcome, type BulkOp, type CatalogModel, Config, type ConnectionSettings, ConnectionStore, DEFAULT_CONNECTION, GATEWAY_HOST_SERVICE, GATEWAY_HOST_SERVICE_VERSION, type GatewayAction, type GatewayHost, type GatewayLogLine, type GatewayState, type GatewayStatus, type ModelOverride, ModelOverridesStore, type PanelAccount, PanelClient, PanelError, type PanelModel, type PanelOverview, STATUS_PATH, type ServerDownloadState, type ServerDownloadStatus, type ServerStatus, THINKING_LEVELS, type ThinkingLevel, WORKBUDDY2API_GATEWAY_VERSION, WORKBUDDY2API_PROVIDER, type WebAccount, type WebLogin, type WebLoginDone, type WebModel, type WebStatus, type WebSync, WorkBuddy2ApiService, apply, buildCatalog, clampRefreshSeconds, createWorkBuddy2ApiAdapter, gatewayConfigPath, gatewayWorkdir, hiddenIds, inject, isThinkingLevel, name, normalizePanelUrl, panelHiddenList, parseAction, pluginDataDir, runAction, safeMessage, serverRootDir, visibleIds };
+export { ACTION_PATH, type AccountOp, type ActionOutcome, type BulkOp, type CatalogModel, Config, type ConnectionSettings, ConnectionStore, type CreditPrice, DEFAULT_CONNECTION, GATEWAY_HOST_SERVICE, GATEWAY_HOST_SERVICE_VERSION, type GatewayAction, type GatewayHost, type GatewayLogLine, type GatewayState, type GatewayStatus, type ModelOverride, ModelOverridesStore, type PanelAccount, PanelClient, PanelError, type PanelModel, type PanelOverview, STATUS_PATH, type ServerDownloadState, type ServerDownloadStatus, type ServerStatus, THINKING_LEVELS, type ThinkingLevel, UNIT_CREDIT_PRICING, type UnitCreditPricing, WORKBUDDY2API_CATALOG_SERVICE, WORKBUDDY2API_CATALOG_SERVICE_VERSION, WORKBUDDY2API_GATEWAY_VERSION, WORKBUDDY2API_PROVIDER, type WebAccount, type WebLogin, type WebLoginDone, type WebModel, type WebStatus, type WebSync, type WorkBuddy2ApiCatalog, WorkBuddy2ApiService, type WorkBuddyCatalogModel, apply, buildCatalog, clampRefreshSeconds, createWorkBuddy2ApiAdapter, createWorkBuddy2ApiCatalog, creditPriceOf, gatewayConfigPath, gatewayWorkdir, hiddenIds, inject, isThinkingLevel, name, normalizePanelUrl, panelHiddenList, parseAction, parseCreditsMultiplier, pluginDataDir, runAction, safeMessage, serverRootDir, toCatalogModel, visibleIds };

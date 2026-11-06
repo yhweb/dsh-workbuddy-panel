@@ -16,7 +16,16 @@ import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { GATEWAY_HOST_SERVICE, GATEWAY_HOST_SERVICE_VERSION } from './gateway-contract.ts'
-import type { GatewayHost, GatewayStatus, KernelCheckCadence, KernelUpdateStatus, ServerStatus } from './gateway-contract.ts'
+import type {
+  DeviceSignalStatus,
+  GatewayHost,
+  GatewayStatus,
+  KernelCheckCadence,
+  KernelUpdateStatus,
+  ServerStatus,
+} from './gateway-contract.ts'
+import { DEVICE_REFRESH_MS, DeviceSignalCollector } from './device-signals.ts'
+import type { DeviceSpawner } from './device-signals.ts'
 import { GatewaySupervisor } from './gateway-supervisor.ts'
 import type { SubprocessLike } from './gateway-supervisor.ts'
 import {
@@ -100,6 +109,15 @@ export const Config = z.object({
   checkUpdates: z.string().default('hourly'),
   /** Explicit channel document URL; empty = discover through GitHub Releases. */
   manifestUrl: z.string().default(''),
+  /** An explicit WorkBuddy install directory; empty = discover one. */
+  workbuddyRoot: z.string().default(''),
+  /**
+   * Collect the client's device id and device token.
+   *
+   * Off means the kernel sends neither header: the gateway still works, it just
+   * looks less like the desktop client it is imitating.
+   */
+  deviceSignals: z.boolean().default(true),
 })
 
 /** Parsed host-row config. */
@@ -112,6 +130,8 @@ export interface Config {
   serverBaseUrl: string
   checkUpdates: string
   manifestUrl: string
+  workbuddyRoot: string
+  deviceSignals: boolean
 }
 
 /**
@@ -138,6 +158,13 @@ export default class GatewayHostService extends Service implements GatewayHost {
   private server: ServerStore
   private readonly bundledManifest: ServerManifest
   private readonly supervisor: GatewaySupervisor
+  /**
+   * The device signals this machine's client can prove.
+   *
+   * Built here rather than in the panel because minting a token needs the
+   * subprocess seam; the panel only reads {@link deviceSignals}.
+   */
+  private readonly signals: DeviceSignalCollector
   private subprocess?: SubprocessLike
   private timer?: ReturnType<typeof setInterval>
   private checkTimer?: ReturnType<typeof setTimeout>
@@ -180,6 +207,16 @@ export default class GatewayHostService extends Service implements GatewayHost {
       },
     })
 
+    this.signals = new DeviceSignalCollector({
+      subprocess: () => this.subprocess as unknown as DeviceSpawner | undefined,
+      enabled: () => this.config.deviceSignals,
+      workbuddyRoot: () => this.config.workbuddyRoot,
+      log: (message, error) => {
+        if (error === undefined) ctx.logger.info(message)
+        else ctx.logger.warn(message, error)
+      },
+    })
+
     ctx.effect(() => {
       this.timer = setInterval(() => {
         void this.supervisor.refresh()
@@ -200,6 +237,23 @@ export default class GatewayHostService extends Service implements GatewayHost {
         this.checkAbort.abort()
       }
     }, 'workbuddy2api-gateway-host: kernel update ticker')
+
+    ctx.effect(() => {
+      // The first run waits for the seam and for startup I/O; afterwards one mint
+      // a minute keeps the token fresh without busying the shield library.
+      const first = setTimeout(() => {
+        void this.signals.refresh().catch(() => {})
+      }, 2_000)
+      first.unref?.()
+      const ticker = setInterval(() => {
+        void this.signals.refresh().catch(() => {})
+      }, DEVICE_REFRESH_MS)
+      ticker.unref?.()
+      return () => {
+        clearTimeout(first)
+        clearInterval(ticker)
+      }
+    }, 'workbuddy2api-gateway-host: device signal ticker')
 
     ctx.inject(['subprocess'], subCtx => {
       this.subprocess = subCtx.get('subprocess') as unknown as SubprocessLike | undefined
@@ -292,6 +346,16 @@ export default class GatewayHostService extends Service implements GatewayHost {
       installing: this.installing,
       ...this.lastCheck?.error === undefined ? {} : { error: this.lastCheck.error },
     }
+  }
+
+  /** The last collected device signals; never blocks, never spawns. */
+  deviceSignals(): DeviceSignalStatus {
+    return this.signals.status()
+  }
+
+  /** Collect the device signals now (the settings page's refresh button). */
+  async refreshDeviceSignals(): Promise<DeviceSignalStatus> {
+    return this.signals.refresh()
   }
 
   /**

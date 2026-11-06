@@ -22,7 +22,7 @@ import type { StatusDocument } from './status-document.ts'
 import type { Translate } from './copy.ts'
 import { formatTokens } from './copy.ts'
 import type { WebAccount, WebModel } from '../service.ts'
-import type { KernelUpdateStatus, ServerStatus } from '../gateway-contract.ts'
+import type { DeviceSignalStatus, KernelUpdateStatus, ServerStatus } from '../gateway-contract.ts'
 import type { ThinkingLevel } from '../catalog.ts'
 import { AccountCard, gatewayStateText, gatewayTone } from './panel-view.tsx'
 import { UsageCard } from './usage-card.tsx'
@@ -730,6 +730,81 @@ function KernelCard(props: {
   )
 }
 
+/**
+ * Device signals: what this machine's own client could prove.
+ *
+ * The kernel cannot invent a device id or a device token, so the honest thing to
+ * show is exactly what was read — and, when something is missing, which step is
+ * missing (no client, or a client that has not started once yet).
+ */
+function DeviceCard(props: {
+  t: Translate
+  store: PanelStore
+  signals: DeviceSignalStatus
+  pending?: string
+}): ReactElement {
+  const { t, store, signals, pending } = props
+  const busy = pending !== undefined
+  const tone: 'ok' | 'warn' | 'off' = !signals.enabled
+    ? 'off'
+    : signals.hasToken && signals.qimei36 !== undefined
+      ? 'ok'
+      : 'warn'
+  const badgeTone: 'ok' | 'warn' | 'muted' = tone === 'off' ? 'muted' : tone
+  const stateText = !signals.enabled
+    ? t('deviceStateOff')
+    : signals.hasToken && signals.qimei36 !== undefined
+      ? t('deviceStateReady')
+      : t('deviceStatePartial')
+  const tokenText = signals.hasToken
+    ? t('deviceTokenPresent', signals.tokenAt === undefined
+      ? '—'
+      : new Date(signals.tokenAt).toLocaleTimeString())
+    : t('deviceTokenMissing')
+  const hint = signals.enabled
+    ? signals.workbuddyRoot === undefined
+      ? t('deviceHintMissing')
+      : signals.qimei36 === undefined
+        ? t('deviceHintNoQimei')
+        : undefined
+    : t('deviceHintDisabled')
+  return (
+    <SettingsGroup
+      title={t('deviceTitle')}
+      description={t('deviceDesc')}
+      action={(
+        <ActionButton
+          label={t('deviceRefresh')}
+          disabled={busy || !signals.enabled}
+          onClick={() => { void store.act({ action: 'device-refresh' }, 'device-refresh') }}
+        />
+      )}
+    >
+      <SettingRow
+        title={(
+          <>
+            <StatusDot tone={tone} title={stateText} />
+            {t('deviceTitle')}
+            <Badge tone={badgeTone}>{stateText}</Badge>
+          </>
+        )}
+        description={hint}
+        error={signals.error}
+      />
+      <SettingRow title={t('deviceWorkbuddy')} control={<span className="wb2-mono">{signals.workbuddyRoot ?? '—'}</span>} />
+      <SettingRow title={t('deviceVersion')} control={<span className="wb2-mono">{signals.workbuddyVersion ?? '—'}</span>} />
+      <SettingRow title={t('deviceQimei')} control={<span className="wb2-mono">{signals.qimei36 ?? '—'}</span>} />
+      <SettingRow title={t('deviceToken')} control={<Badge tone={signals.hasToken ? 'ok' : 'muted'}>{tokenText}</Badge>} />
+      <SettingRow
+        title={t('deviceRefreshedAt')}
+        control={<span className="wb2-mono">{signals.refreshedAt === undefined ? '—' : new Date(signals.refreshedAt).toLocaleString()}</span>}
+      />
+      <SettingRow title={t('deviceFile')} control={<span className="wb2-mono">{signals.path}</span>} />
+      <SettingRow title={t('deviceTokenFile')} control={<span className="wb2-mono">{signals.tokenPath}</span>} />
+    </SettingsGroup>
+  )
+}
+
 /** The process: state, controls, where it lives, and what it printed. */
 function GatewayTab(props: {
   t: Translate
@@ -746,6 +821,7 @@ function GatewayTab(props: {
     <>
       <ServerCard t={t} store={store} server={server} pending={pending} />
       <KernelCard t={t} store={store} kernel={document.kernel} server={server} pending={pending} />
+      <DeviceCard t={t} store={store} signals={document.deviceSignals} pending={pending} />
       <SettingsGroup
         title={t('gatewayTitle')}
         description={t('gatewayDesc')}

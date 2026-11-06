@@ -1,4 +1,4 @@
-import { c as KernelUpdateStatus, d as ServerStatus, o as GatewayStatus, r as GatewayHost, s as KernelCheckCadence } from "./gateway-contract-Dx2NgcNg.js";
+import { c as KernelCheckCadence, f as ServerStatus, i as GatewayHost, l as KernelUpdateStatus, s as GatewayStatus, t as DeviceSignalStatus } from "./gateway-contract-r1m7qjxn.js";
 import z from "@deepseek-ai/schemastery";
 import { Context, Service } from "@deepseek-ai/cordis";
 /** Host-row composition defaults. */
@@ -24,6 +24,15 @@ declare const Config: z<Schemastery.ObjectS<NoInfer<{
   checkUpdates: z<string, string, "defined">;
   /** Explicit channel document URL; empty = discover through GitHub Releases. */
   manifestUrl: z<string, string, "defined">;
+  /** An explicit WorkBuddy install directory; empty = discover one. */
+  workbuddyRoot: z<string, string, "defined">;
+  /**
+   * Collect the client's device id and device token.
+   *
+   * Off means the kernel sends neither header: the gateway still works, it just
+   * looks less like the desktop client it is imitating.
+   */
+  deviceSignals: z<boolean, boolean, "defined">;
 }>>, Schemastery.ObjectT<NoInfer<{
   /** Loopback port the gateway listens on and the health probe uses. */
   port: z<number, number, "defined">;
@@ -46,6 +55,15 @@ declare const Config: z<Schemastery.ObjectS<NoInfer<{
   checkUpdates: z<string, string, "defined">;
   /** Explicit channel document URL; empty = discover through GitHub Releases. */
   manifestUrl: z<string, string, "defined">;
+  /** An explicit WorkBuddy install directory; empty = discover one. */
+  workbuddyRoot: z<string, string, "defined">;
+  /**
+   * Collect the client's device id and device token.
+   *
+   * Off means the kernel sends neither header: the gateway still works, it just
+   * looks less like the desktop client it is imitating.
+   */
+  deviceSignals: z<boolean, boolean, "defined">;
 }>>, "plain">;
 /** Parsed host-row config. */
 interface Config {
@@ -57,6 +75,8 @@ interface Config {
   serverBaseUrl: string;
   checkUpdates: string;
   manifestUrl: string;
+  workbuddyRoot: string;
+  deviceSignals: boolean;
 }
 /**
  * The host-owned gateway service.
@@ -88,6 +108,15 @@ declare class GatewayHostService extends Service implements GatewayHost {
     checkUpdates: z<string, string, "defined">;
     /** Explicit channel document URL; empty = discover through GitHub Releases. */
     manifestUrl: z<string, string, "defined">;
+    /** An explicit WorkBuddy install directory; empty = discover one. */
+    workbuddyRoot: z<string, string, "defined">;
+    /**
+     * Collect the client's device id and device token.
+     *
+     * Off means the kernel sends neither header: the gateway still works, it just
+     * looks less like the desktop client it is imitating.
+     */
+    deviceSignals: z<boolean, boolean, "defined">;
   }>>, Schemastery.ObjectT<NoInfer<{
     /** Loopback port the gateway listens on and the health probe uses. */
     port: z<number, number, "defined">;
@@ -110,8 +139,17 @@ declare class GatewayHostService extends Service implements GatewayHost {
     checkUpdates: z<string, string, "defined">;
     /** Explicit channel document URL; empty = discover through GitHub Releases. */
     manifestUrl: z<string, string, "defined">;
+    /** An explicit WorkBuddy install directory; empty = discover one. */
+    workbuddyRoot: z<string, string, "defined">;
+    /**
+     * Collect the client's device id and device token.
+     *
+     * Off means the kernel sends neither header: the gateway still works, it just
+     * looks less like the desktop client it is imitating.
+     */
+    deviceSignals: z<boolean, boolean, "defined">;
   }>>, "plain">;
-  readonly serviceVersion = 2;
+  readonly serviceVersion = 3;
   private readonly owner;
   private readonly config;
   /**
@@ -124,6 +162,13 @@ declare class GatewayHostService extends Service implements GatewayHost {
   private server;
   private readonly bundledManifest;
   private readonly supervisor;
+  /**
+   * The device signals this machine's client can prove.
+   *
+   * Built here rather than in the panel because minting a token needs the
+   * subprocess seam; the panel only reads {@link deviceSignals}.
+   */
+  private readonly signals;
   private subprocess?;
   private timer?;
   private checkTimer?;
@@ -165,6 +210,10 @@ declare class GatewayHostService extends Service implements GatewayHost {
   updateConfigApiKey(key: string): boolean;
   /** Kernel discovery state (cadence, last check, offered version). */
   kernelUpdate(): KernelUpdateStatus;
+  /** The last collected device signals; never blocks, never spawns. */
+  deviceSignals(): DeviceSignalStatus;
+  /** Collect the device signals now (the settings page's refresh button). */
+  refreshDeviceSignals(): Promise<DeviceSignalStatus>;
   /**
    * Ask the channel what the newest kernel is.
    *

@@ -21,7 +21,14 @@
  * @module dsh-workbuddy2api-gateway/service
  */
 
-import { catalogCachePath, gatewayConfigPath, gatewayUsagePath, gatewayWorkdir } from './paths.ts'
+import {
+  catalogCachePath,
+  deviceSignalsPath,
+  deviceTokenPath,
+  gatewayConfigPath,
+  gatewayUsagePath,
+  gatewayWorkdir,
+} from './paths.ts'
 import { readUsage } from './usage.ts'
 import type { UsageSummary } from './usage.ts'
 import { readStoreDocument, writeStoreDocument } from './store-file.ts'
@@ -31,7 +38,15 @@ import type { ModelOverridesStore } from './overrides-store.ts'
 import type { ConnectionSettings, ConnectionStore } from './settings-store.ts'
 import { PanelClient, PanelError, safeMessage } from './panel-client.ts'
 import type { AccountOp, BulkOp, PanelAccount, PanelBinding, PanelModel, PanelOverview, PanelSessionCredits } from './panel-client.ts'
-import type { GatewayHost, GatewayState, GatewayStatus, KernelCheckCadence, KernelUpdateStatus, ServerStatus } from './gateway-contract.ts'
+import type {
+  DeviceSignalStatus,
+  GatewayHost,
+  GatewayState,
+  GatewayStatus,
+  KernelCheckCadence,
+  KernelUpdateStatus,
+  ServerStatus,
+} from './gateway-contract.ts'
 import { serverManifest } from './server-release.ts'
 import { readAccountDefaults, writeAccountDefaults } from './account-defaults.ts'
 import type { AccountDefaults } from './account-defaults.ts'
@@ -176,6 +191,13 @@ export interface WebStatus {
   server: ServerStatus
   /** Kernel discovery: cadence, last check, and the version the channel offers. */
   kernel: KernelUpdateStatus
+  /**
+   * The device id and token this machine's WorkBuddy client produced.
+   *
+   * The kernel cannot invent either, so the page reports what was actually read
+   * and, when nothing was, why the client could not supply it.
+   */
+  deviceSignals: DeviceSignalStatus
   panel: {
     connected: boolean
     version?: string
@@ -364,6 +386,17 @@ function portFromPanelUrl(url: string): number {
 /** Kernel state before the host row is loaded. */
 function fallbackKernelUpdate(): KernelUpdateStatus {
   return { cadence: 'hourly', available: false, installing: false, error: 'the host gateway row is not loaded' }
+}
+
+/** Device signals before the host row is loaded: nothing read, nothing claimed. */
+function fallbackDeviceSignals(): DeviceSignalStatus {
+  return {
+    enabled: false,
+    hasToken: false,
+    path: deviceSignalsPath(),
+    tokenPath: deviceTokenPath(),
+    error: 'the host gateway row is not loaded',
+  }
 }
 
 function fallbackServerStatus(): ServerStatus {
@@ -691,6 +724,7 @@ export class WorkBuddy2ApiService {
       server,
       // Optional call: a host row from an older generation may not offer this.
       kernel: host?.kernelUpdate?.() ?? fallbackKernelUpdate(),
+      deviceSignals: host?.deviceSignals?.() ?? fallbackDeviceSignals(),
       panel: {
         // "Connected" needs both halves: the process is up and the last read
         // actually reached it. A cached overview from before a stop must not
@@ -870,6 +904,26 @@ export class WorkBuddy2ApiService {
     if (host === undefined) return { ok: false, message: 'the host gateway row is not loaded', status: this.status() }
     host.setKernelCadence(cadence)
     return { ok: true, message: 'kernel update cadence saved', status: this.status() }
+  }
+
+  /**
+   * Re-read the device id and mint a fresh device token.
+   *
+   * Minting needs the client's native library, which only the host row may load,
+   * so this is an action rather than something the poller does.
+   */
+  async refreshDeviceSignals(): Promise<ActionOutcome> {
+    const host = this.host()
+    if (host === undefined) return { ok: false, message: 'the host gateway row is not loaded', status: this.status() }
+    if (host.refreshDeviceSignals === undefined) {
+      return { ok: false, message: 'the host gateway row has no device-signal collector', status: this.status() }
+    }
+    const signals = await host.refreshDeviceSignals()
+    return {
+      ok: signals.error === undefined,
+      ...signals.error === undefined ? {} : { message: signals.error },
+      status: this.status(),
+    }
   }
 
   /** Probe the gateway without changing the process. */

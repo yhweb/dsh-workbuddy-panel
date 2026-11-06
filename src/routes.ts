@@ -60,6 +60,7 @@ export type GatewayAction =
   | { action: 'kernel-check' }
   | { action: 'kernel-install' }
   | { action: 'kernel-cadence', cadence: 'hourly' | 'never' }
+  | { action: 'device-refresh' }
   | { action: 'connection', panelUrl?: string, apiKey?: string, refreshSeconds?: number, syncHiddenToPanel?: boolean }
   | { action: 'auto-register', enabled: boolean }
   | { action: 'model', id: string, enabled?: boolean, effort?: ThinkingLevel | null, efforts?: readonly ThinkingLevel[] }
@@ -177,6 +178,7 @@ export function parseAction(text: string): GatewayAction | undefined {
       return { action: 'models-all', enabled: body['enabled'], ...region === undefined ? {} : { region } }
     }
     case 'kernel-check': return { action: 'kernel-check' }
+    case 'device-refresh': return { action: 'device-refresh' }
     case 'kernel-install': return { action: 'kernel-install' }
     case 'kernel-cadence': {
       const cadence = body['cadence']
@@ -307,6 +309,8 @@ export async function runAction(service: WorkBuddy2ApiService, action: GatewayAc
       return service.installKernelUpdate()
     case 'kernel-cadence':
       return Promise.resolve(service.setKernelCadence(action.cadence))
+    case 'device-refresh':
+      return service.refreshDeviceSignals()
     case 'connection':
       return service.saveConnection({
         ...action.panelUrl === undefined ? {} : { panelUrl: action.panelUrl },

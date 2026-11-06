@@ -119,6 +119,36 @@ export interface ServerStatus {
   error?: string
 }
 
+/**
+ * The device signals the client on this machine can prove.
+ *
+ * `qimei36` is the device id WorkBuddy's telemetry SDK caches on disk, and the
+ * token is what its native shield signs. Neither can be derived from the other
+ * or invented, so the panel only reports whether the local client produced them.
+ */
+export interface DeviceSignalStatus {
+  /** Whether the user left the feature on. */
+  enabled: boolean
+  /** The client install the signals were read from. */
+  workbuddyRoot?: string
+  /** That client's version. */
+  workbuddyVersion?: string
+  /** The cached device id, when the client has written one. */
+  qimei36?: string
+  /** Whether a device token is currently known. */
+  hasToken: boolean
+  /** ISO time the current token was minted. */
+  tokenAt?: string
+  /** ISO time the last collection run finished. */
+  refreshedAt?: string
+  /** The document the kernel reads. */
+  path: string
+  /** The bare token file the kernel reads. */
+  tokenPath: string
+  /** Why the last run could not produce both values, when it could not. */
+  error?: string
+}
+
 /** How often the host row looks for a newer kernel. */
 export type KernelCheckCadence = 'hourly' | 'never'
 
@@ -167,10 +197,14 @@ export interface GatewayHost {
   ensureConfig(): { path: string, created: boolean, apiKey?: string }
   apiKeyFromConfig(): string | undefined
   updateConfigApiKey(key: string): boolean
+  /** The last collected device signals; optional so older rows still satisfy. */
+  deviceSignals?(): DeviceSignalStatus
+  /** Collect the device signals now; resolves with the post-collection state. */
+  refreshDeviceSignals?(): Promise<DeviceSignalStatus>
 }
 
 /** The Cordis service name the host row registers. */
 export const GATEWAY_HOST_SERVICE = 'workbuddy2apiGateway'
 
 /** The contract generation this panel understands. */
-export const GATEWAY_HOST_SERVICE_VERSION = 2
+export const GATEWAY_HOST_SERVICE_VERSION = 3

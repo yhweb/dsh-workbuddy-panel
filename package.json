@@ -120,10 +120,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/functy23/dsh-workbuddy-panel.git"
+    "url": "git+https://github.com/yhweb/dsh-workbuddy-panel.git"
   },
-  "homepage": "https://github.com/functy23/dsh-workbuddy-panel#readme",
+  "homepage": "https://github.com/yhweb/dsh-workbuddy-panel#readme",
   "bugs": {
-    "url": "https://github.com/functy23/dsh-workbuddy-panel/issues"
+    "url": "https://github.com/yhweb/dsh-workbuddy-panel/issues"
   }
 }
