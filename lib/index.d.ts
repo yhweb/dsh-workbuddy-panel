@@ -382,6 +382,57 @@ declare class ConnectionStore {
   /** Merge a patch into the stored document. */
   patch(patch: Partial<ConnectionSettings>): ConnectionSettings;
 }
+/**
+ * Optional bridge to dsh-providers-hub for the cn (Tencent CodeBuddy) pool.
+ *
+ * The panel and providers-hub both hold Tencent CodeBuddy accounts, but store
+ * them in unrelated places and name them differently. This module reconciles the
+ * two so a drag or an added account in either plugin lands in the other. It is
+ * deliberately self-contained and optional: providers-hub registers its
+ * `accountPool` and the host registers `credentials`; when either is absent this
+ * bridge reports `absent` and the panel behaves exactly as before.
+ *
+ * Identity: a CodeBuddy account is the same person when the panel account uid
+ * (Tencent user id) equals the providers-hub credential user_id. Access tokens
+ * rotate, the uid does not, so the uid is the stable key.
+ *
+ * Ordering: providers-hub is authoritative. The panel pushes its drags to
+ * providers-hub and re-reads the authoritative order back. Rate-limited accounts
+ * sink to the end on both sides.
+ *
+ * @module dsh-workbuddy2api-gateway/providers-hub-bridge
+ */
+interface PanelCnAccount {
+  uid: string;
+  nickname: string;
+  accessToken: string;
+  refreshToken: string;
+}
+interface BuddyAccountView {
+  uid: string;
+  nickname: string;
+  accessToken: string;
+  refreshToken: string;
+  domain: string;
+  expiresAt?: number;
+  enabled: boolean;
+  rateLimited: boolean;
+  accountId: string;
+  credentialRef: string;
+}
+interface ProvidersHubBridge {
+  availability(): 'absent' | 'present';
+  listBuddyAccounts(): Promise<BuddyAccountView[]>;
+  reconcile(panel: readonly PanelCnAccount[]): Promise<ReconcileResult>;
+  pushOrder(orderedUids: readonly string[]): Promise<void>;
+  pullOrder(): Promise<string[]>;
+}
+interface ReconcileResult {
+  availability: 'absent' | 'present';
+  addedToProvidersHub: number;
+  addedToPanel: number;
+  order: string[];
+}
 /** One account as the browser sees it. */
 interface WebAccount {
   uid: string;
@@ -536,6 +587,12 @@ interface WebStatus {
     hiddenModels: number;
   };
   accounts: readonly WebAccount[];
+  /**
+   * The account at the top of the user's order: offered to the LAN as the
+   * gateway account. DSH conversations prefer the others; the picker excludes
+   * this one so a conversation is not pinned to it by default.
+   */
+  gatewayAccount?: string;
   models: readonly WebModel[];
   updatedAt?: string;
   error?: string;
@@ -574,6 +631,8 @@ interface WorkBuddy2ApiServiceOptions {
   client: PanelClient;
   /** Resolve the host row lazily: either row may load first. */
   host: () => GatewayHost | undefined;
+  /** Optional bridge to dsh-providers-hub for the cn pool; absent when not loaded. */
+  providersHubBridge?: () => ProvidersHubBridge | undefined;
   cachePath?: string;
   warn?: (message: string, error?: unknown) => void;
   onChange?: () => void;
@@ -605,6 +664,8 @@ declare class WorkBuddy2ApiService {
   private sessionsError?;
   /** The account the user picked by hand; survives restarts and applies to new sessions. */
   private defaults;
+  /** The order the user dragged the pool into: shared by table and picker. */
+  private order;
   private emptyModelReads;
   /** Consecutive reads that omitted a realm, keyed by realm. */
   private realmGaps;
@@ -714,16 +775,27 @@ declare class WorkBuddy2ApiService {
   private noteBindings;
   /** The realm an account belongs to, read from the last overview. */
   private realmOfAccount;
-  /** Persist one manual pick as the realm's default. */
-  private rememberPick;
-  /** Drop the realm's default, so new sessions go back to pool allocation. */
-  private forgetPick;
-  /** Pin one session key to one account: the pool stops rotating that session. */
+  /**
+   * Pin one session key to one account: the pool stops rotating that session.
+   *
+   * The pick is deliberately session-scoped: it does not write a realm default,
+   * so choosing an account in one conversation neither re-pins new conversations
+   * nor touches the accounts the pool still hands to everyone else.
+   */
   bindSession(key: string, uid: string): Promise<ActionOutcome>;
   /** Read one session's spend from the kernel's ledger (upstream `usage.credit`). */
   sessionCredits(key: string): Promise<ActionOutcome>;
   /** Release one session key back to the pool's own allocation. */
   unbindSession(key: string): Promise<ActionOutcome>;
+  /**
+   * Replace the account order.
+   *
+   * Only accounts the gateway currently reports are kept, in the order given; a
+   * dragged row therefore cannot smuggle in an unknown uid, and a removed
+   * account drops out on the next read. The first surviving uid becomes the
+   * gateway account offered to the LAN.
+   */
+  setAccountOrder(uids: readonly string[]): ActionOutcome;
   /** One pool-wide operation. */
   bulkOp(op: BulkOp): Promise<ActionOutcome>;
   /** Import accounts from the cockpit export shape. */
@@ -884,6 +956,9 @@ type GatewayAction = {
 } | {
   action: 'session-credits';
   session: string;
+} | {
+  action: 'account-order';
+  uids: readonly string[];
 };
 /** Parse and shape-check one action; unknown fields are ignored, not trusted. */
 declare function parseAction(text: string): GatewayAction | undefined;
