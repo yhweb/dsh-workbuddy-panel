@@ -99,6 +99,13 @@ export interface Config {
 /** Poll floor for the catalog scheduler. */
 const TICK_MS = 5_000
 
+/**
+ * How often to re-read providers-hub's cn order. A drag there is silent to us, so
+ * this is a poll rather than an event; the interval is generous because the order
+ * changes rarely and adoptProviderOrder is cheap and idempotent.
+ */
+const BRIDGE_ORDER_POLL_MS = 10_000
+
 /** The route id this instance actually registered under. */
 interface RouteState {
   id: string
@@ -263,7 +270,9 @@ export function apply(ctx: Context, config: Config): void {
     const result = await bridge.reconcile(panel).catch(() => undefined)
     if (result === undefined || result.availability === 'absent') return
     if (result.order.length > 0) {
-      service.setAccountOrder(result.order)
+      // Adopt providers-hub's cn order without pushing it straight back; the
+      // panel's own drag path is the only one that writes to providers-hub.
+      service.adoptProviderOrder(result.order)
     }
     if (result.addedToProvidersHub > 0) {
       log.info('workbuddy2api-gateway: pushed ' + String(result.addedToProvidersHub) + ' cn account(s) to providers-hub')
@@ -271,6 +280,20 @@ export function apply(ctx: Context, config: Config): void {
   }).catch((error: unknown) => {
     log.warn('workbuddy2api-gateway: providers-hub reconcile failed', error)
   })
+
+  // Keep the panel order following providers-hub. A drag in providers-hub is not
+  // announced to us, so we re-read its cn order on a slow cadence and adopt it
+  // when it actually changed. adoptProviderOrder never pushes back, so this can
+  // never fight the panel's own drag path.
+  const bridgeOrderTicker = setInterval(() => {
+    if (providersHubBridge.availability() !== 'present') return
+    void providersHubBridge.pullOrder().then(order => {
+      if (order.length > 0 && service.adoptProviderOrder(order)) {
+        log.info('workbuddy2api-gateway: adopted providers-hub cn order (' + String(order.length) + ' accounts)')
+      }
+    }).catch(() => {})
+  }, BRIDGE_ORDER_POLL_MS)
+  bridgeOrderTicker.unref?.()
 
   // One ticker instead of one timer per interval: the cadence is a setting the
   // page can change, so the schedule is recomputed on each tick rather than
@@ -288,6 +311,7 @@ export function apply(ctx: Context, config: Config): void {
   ticker.unref?.()
   ctx.effect(() => () => {
     clearInterval(ticker)
+    clearInterval(bridgeOrderTicker)
     service.dispose()
   }, 'dsh-workbuddy2api-gateway: poller')
 

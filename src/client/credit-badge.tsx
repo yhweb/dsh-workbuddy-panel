@@ -37,6 +37,7 @@ import type { ModelDirectory } from '@deepseek-ai/dsh-client-ui-model-selection/
 import { isThinkingLevel } from '../catalog.ts'
 import type { WebAccount } from '../service.ts'
 import { postAction } from './status-document.ts'
+import { reorderAccountUids } from '../account-order-ops.ts'
 import type { ClientAction } from './status-document.ts'
 import type { PanelStore } from './store.ts'
 import type { Translate } from './copy.ts'
@@ -118,6 +119,9 @@ export function WorkBuddy2ApiCreditBadge({ t, store, directory, session }: Credi
   const [tab, setTab] = useState<Realm | undefined>(undefined)
   const [anchor, setAnchor] = useState<{ left: number, bottom: number } | undefined>(undefined)
   const [busy, setBusy] = useState<string | undefined>(undefined)
+  // Which picker row is being dragged; the drop reorders the shared account
+  // order so the settings table follows on its next poll.
+  const [dragUid, setDragUid] = useState<string | undefined>(undefined)
   const [note, setNote] = useState<string | undefined>(undefined)
   const chip = useRef<HTMLButtonElement | null>(null)
 
@@ -316,6 +320,22 @@ export function WorkBuddy2ApiCreditBadge({ t, store, directory, session }: Credi
     if (await send({ action: 'session-unbind', session }, 'release')) setOpen(false)
   }
 
+  /**
+   * Reorder the shared account order by dropping `dragUid` onto `targetUid`.
+   * The move is computed over the FULL account list (not the realm-filtered
+   * rows) so a cross-realm drag lands where the drop happened, then the new
+   * order is persisted; the settings table picks it up on its next poll.
+   */
+  const moveAccount = (targetUid: string): void => {
+    if (dragUid === undefined || dragUid === targetUid) return
+    const byUid = new Map(document_.accounts.map(account => [account.uid, account] as const))
+    const isGlobal = (uid: string): boolean => byUid.get(uid)?.realm === 'global'
+    const current = document_.accounts.map(account => account.uid)
+    const uids = reorderAccountUids(current, dragUid, targetUid, isGlobal)
+    setDragUid(undefined)
+    void send({ action: 'account-order', uids }, 'account-order')
+  }
+
   const refreshCredit = async (): Promise<void> => {
     if (current === undefined) return
     if (await send({ action: 'account', uid: current.uid, op: 'balance' }, 'balance')) {
@@ -326,7 +346,10 @@ export function WorkBuddy2ApiCreditBadge({ t, store, directory, session }: Credi
   const activeRealm: Realm = tab ?? realm
   // The document already carries the user's dragged order; keep it (do not re-rank)
   // so the picker matches the settings table, and leave the gateway account out.
-  const rows = document_.accounts.filter(account => realmOf(account) === activeRealm && account.uid !== gatewayUid)
+  // Show every account of the realm, gateway account included: the gateway
+  // account is a label for LAN use, not a hidden account. Picking it in chat is
+  // still safe (session-bind only, never touches other sessions or the pool).
+  const rows = document_.accounts.filter(account => realmOf(account) === activeRealm)
   const pending = busy !== undefined
 
   return (
@@ -385,6 +408,12 @@ export function WorkBuddy2ApiCreditBadge({ t, store, directory, session }: Credi
               <button
                 key={account.uid}
                 type="button"
+                draggable
+                onDragStart={() => { setDragUid(account.uid) }}
+                onDragOver={(event) => { event.preventDefault() }}
+                onDrop={(event) => { event.preventDefault(); moveAccount(account.uid) }}
+                onDragEnd={() => { setDragUid(undefined) }}
+                data-drag={dragUid === account.uid ? 'src' : undefined}
                 disabled={pinned || pending}
                 onClick={() => {
                   void pick(account)
@@ -393,12 +422,14 @@ export function WorkBuddy2ApiCreditBadge({ t, store, directory, session }: Credi
                   + (isNever(account.lastSuccess) ? '' : ' · ' + shortMoment(account.lastSuccess ?? ''))}
                 className="wb2aRow"
                 data-pinned={pinned}
-                style={{ opacity: pending && !pinned ? 0.6 : 1 }}
+                style={{ opacity: dragUid === account.uid ? 0.45 : pending && !pinned ? 0.6 : 1 }}
               >
+                <span className="wb2aDragHandle" aria-hidden="true" style={{ cursor: 'grab', opacity: 0.5, userSelect: 'none' }}>≡</span>
                 <span className="wb2aDot" data-tone={dot} />
                 <span className="wb2aRowName" style={{ fontWeight: pinned ? 600 : 400 }}>{nameOf(account)}</span>
                 <span style={{ flex: 1 }} />
                 <span className="wb2aRowNum">{creditsOf(account)}</span>
+                {account.uid === gatewayUid ? <span className="wb2aRowTag">{t('gatewayAccountBadge')}</span> : null}
                 {pinned ? <span className="wb2aRowTag">{t('chipInUse')}</span> : null}
                 {busy === account.uid ? <span className="wb2aRowTag">{t('chipBusy')}</span> : null}
               </button>

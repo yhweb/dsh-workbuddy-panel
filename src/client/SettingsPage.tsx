@@ -21,6 +21,7 @@ import type { PanelStore } from './store.ts'
 import type { StatusDocument } from './status-document.ts'
 import type { Translate } from './copy.ts'
 import { formatTokens, formatCredits } from './copy.ts'
+import { reorderAccountUids } from '../account-order-ops.ts'
 import type { WebAccount, WebModel } from '../service.ts'
 import type { DeviceSignalStatus, KernelUpdateStatus, ServerStatus } from '../gateway-contract.ts'
 import type { ThinkingLevel } from '../catalog.ts'
@@ -344,11 +345,10 @@ function AccountsTab(props: {
   const [dragUid, setDragUid] = useState<string | undefined>(undefined)
   const moveAccount = (targetUid: string): void => {
     if (dragUid === undefined || dragUid === targetUid) return
-    const uids = document.accounts.map(account => account.uid)
-    const from = uids.indexOf(dragUid)
-    const to = uids.indexOf(targetUid)
-    if (from < 0 || to < 0) return
-    uids.splice(to, 0, ...uids.splice(from, 1))
+    const byUid = new Map(document.accounts.map(account => [account.uid, account] as const))
+    const isGlobal = (uid: string): boolean => byUid.get(uid)?.realm === 'global'
+    const current = document.accounts.map(account => account.uid)
+    const uids = reorderAccountUids(current, dragUid, targetUid, isGlobal)
     setDragUid(undefined)
     void store.act({ action: 'account-order', uids }, 'account-order')
   }

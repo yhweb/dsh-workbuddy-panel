@@ -51,6 +51,7 @@ import { serverManifest } from './server-release.ts'
 import { readAccountDefaults } from './account-defaults.ts'
 import type { AccountDefaults } from './account-defaults.ts'
 import { applyAccountOrder, readAccountOrder, writeAccountOrder } from './account-order.ts'
+import { mergeProviderOrder } from './account-order-ops.ts'
 import type { ProvidersHubBridge } from './providers-hub-bridge.ts'
 
 /** Format version of the cached catalog document. */
@@ -1176,6 +1177,35 @@ export class WorkBuddy2ApiService {
       return { ok: true, message: 'order saved', status: this.status() }
     } catch (error: unknown) {
       return { ok: false, message: safeMessage(error), status: this.status() }
+    }
+  }
+
+  /**
+   * Adopt an authoritative cn order from providers-hub without pushing back.
+   *
+   * `setAccountOrder` is the local drag path: it saves and re-pushes to
+   * providers-hub. This is the inbound path: providers-hub was dragged and the
+   * ordered cn uids arrived, so we fold them into the panel order while leaving
+   * the international (global) accounts pinned at the head/tail they already
+   * occupy. It never calls `pushOrder`, so an inbound order cannot bounce back
+   * and forth. A no-op order (nothing actually moved) is not persisted, which is
+   * what stops the two plugins from nudging each other every poll.
+   */
+  adoptProviderOrder(providerCn: readonly string[]): boolean {
+    if (providerCn.length === 0) return false
+    const accounts = this.snapshot.overview?.accounts ?? []
+    if (accounts.length === 0) return false
+    const realmOf = new Map(accounts.map(account => [account.uid, account.realm] as const))
+    const isGlobal = (uid: string): boolean => realmOf.get(uid) === 'global'
+    const current = applyAccountOrder(accounts.map(webAccount), this.order).map(account => account.uid)
+    const merged = mergeProviderOrder(current, providerCn, isGlobal)
+    const changed = merged.length !== this.order.length || merged.some((uid, index) => uid !== this.order[index])
+    if (!changed) return false
+    try {
+      this.order = writeAccountOrder(merged)
+      return true
+    } catch {
+      return false
     }
   }
 
