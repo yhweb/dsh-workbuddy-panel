@@ -796,6 +796,18 @@ declare class WorkBuddy2ApiService {
    * gateway account offered to the LAN.
    */
   setAccountOrder(uids: readonly string[]): ActionOutcome;
+  /**
+   * Adopt an authoritative cn order from providers-hub without pushing back.
+   *
+   * `setAccountOrder` is the local drag path: it saves and re-pushes to
+   * providers-hub. This is the inbound path: providers-hub was dragged and the
+   * ordered cn uids arrived, so we fold them into the panel order while leaving
+   * the international (global) accounts pinned at the head/tail they already
+   * occupy. It never calls `pushOrder`, so an inbound order cannot bounce back
+   * and forth. A no-op order (nothing actually moved) is not persisted, which is
+   * what stops the two plugins from nudging each other every poll.
+   */
+  adoptProviderOrder(providerCn: readonly string[]): boolean;
   /** One pool-wide operation. */
   bulkOp(op: BulkOp): Promise<ActionOutcome>;
   /** Import accounts from the cockpit export shape. */
