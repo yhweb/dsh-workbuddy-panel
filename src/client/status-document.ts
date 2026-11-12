@@ -60,6 +60,7 @@ export type ClientAction =
   | { action: 'session-bind', session: string, uid: string }
   | { action: 'session-unbind', session: string }
   | { action: 'session-credits', session: string }
+  | { action: 'account-order', uids: readonly string[] }
 
 /** One action response. */
 export interface ActionResponse {

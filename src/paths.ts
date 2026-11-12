@@ -35,6 +35,14 @@ export function accountDefaultsPath(): string {
   return join(pluginDataDir(), 'account-defaults.json')
 }
 
+/**
+ * The user's manual account order: one flat uid list that both the settings
+ * table and the composer picker read, so a drag in either place lands in both.
+ */
+export function accountOrderPath(): string {
+  return join(pluginDataDir(), 'account-order.json')
+}
+
 /** The gateway's config.json path. */
 /**
  * The verified server cache.

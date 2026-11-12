@@ -21,6 +21,7 @@
 import { useMemo, useState } from 'react'
 import type { CSSProperties, ReactElement } from 'react'
 import type { Translate } from './copy.ts'
+import { formatCredits } from './copy.ts'
 import type { UsageDay, UsageSummary } from '../usage.ts'
 /** A quiet segmented control in the Claude idiom: a track, a lift, no chrome. */
 function Seg<T extends string>({ label, value, options, onChange }: {
@@ -179,8 +180,8 @@ export function UsageCard({ t, usage, creditsLeft }: UsageCardProps): ReactEleme
     ? { copies: Math.max(1, Math.round(totals.tokens / 132_467)), name: t('usageBook') }
     : undefined
   const creditParts: string[] = []
-  if (creditsLeft?.cn !== undefined) creditParts.push(t('creditsRealmCn') + ' ' + grouped(Math.round(creditsLeft.cn)))
-  if (creditsLeft?.global !== undefined) creditParts.push(t('creditsRealmGlobal') + ' ' + grouped(Math.round(creditsLeft.global)))
+  if (creditsLeft?.cn !== undefined) creditParts.push(t('creditsRealmCn') + ' ' + formatCredits(creditsLeft.cn))
+  if (creditsLeft?.global !== undefined) creditParts.push(t('creditsRealmGlobal') + ' ' + formatCredits(creditsLeft.global))
   const creditText = creditParts.length === 0 ? '—' : creditParts.join(' · ')
 
   return (
@@ -213,7 +214,7 @@ export function UsageCard({ t, usage, creditsLeft }: UsageCardProps): ReactEleme
         <Stat label={t('usageCalls')} value={grouped(totals.calls)} />
         <Stat
           label={metric === 'tokens' ? t('usageTokensTotal') : t('usageCreditsTotal')}
-          value={metric === 'tokens' ? compactTokens(totals.tokens) : grouped(Math.round(totals.credits))}
+          value={metric === 'tokens' ? compactTokens(totals.tokens) : formatCredits(totals.credits)}
         />
         <Stat small label={t('creditsLeftLabel')} value={creditText} />
         <Stat label={t('usageActiveDays')} value={String(totals.activeDays)} />
@@ -235,7 +236,7 @@ export function UsageCard({ t, usage, creditsLeft }: UsageCardProps): ReactEleme
               data-level={level(value, peak)}
               title={t('usageHeatTip', day.date, metric === 'tokens'
                 ? compactTokens(day.tokens) + ' ' + t('usageTokensUnit')
-                : grouped(Math.round(day.credits)) + ' ' + t('usageCreditsUnit'))}
+                : formatCredits(day.credits) + ' ' + t('usageCreditsUnit'))}
             />
           )
         })}
@@ -245,7 +246,7 @@ export function UsageCard({ t, usage, creditsLeft }: UsageCardProps): ReactEleme
         {usage.empty
           ? t('usageEmptyHint')
           : book === undefined
-            ? t('usageFootCredits', grouped(Math.round(totals.credits)))
+            ? t('usageFootCredits', formatCredits(totals.credits))
             : t('usageFootTokens', grouped(book.copies), book.name)}
         {plotted === 0 && !usage.empty ? ' ' + t('usageFootRange', grouped(0)) : null}
       </p>

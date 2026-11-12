@@ -20,7 +20,7 @@ import type { ReactElement, ReactNode } from 'react'
 import type { PanelStore } from './store.ts'
 import type { StatusDocument } from './status-document.ts'
 import type { Translate } from './copy.ts'
-import { formatTokens } from './copy.ts'
+import { formatTokens, formatCredits } from './copy.ts'
 import type { WebAccount, WebModel } from '../service.ts'
 import type { DeviceSignalStatus, KernelUpdateStatus, ServerStatus } from '../gateway-contract.ts'
 import type { ThinkingLevel } from '../catalog.ts'
@@ -339,14 +339,29 @@ function AccountsTab(props: {
   const busy = pending !== undefined
   const [confirmRemove, setConfirmRemove] = useState<string | undefined>(undefined)
   const [addOpen, setAddOpen] = useState(false)
+  // Which row is being dragged; the drop target moves it there and the host
+  // saves the new order, so the other list (the chat chip) follows on next poll.
+  const [dragUid, setDragUid] = useState<string | undefined>(undefined)
+  const moveAccount = (targetUid: string): void => {
+    if (dragUid === undefined || dragUid === targetUid) return
+    const uids = document.accounts.map(account => account.uid)
+    const from = uids.indexOf(dragUid)
+    const to = uids.indexOf(targetUid)
+    if (from < 0 || to < 0) return
+    uids.splice(to, 0, ...uids.splice(from, 1))
+    setDragUid(undefined)
+    void store.act({ action: 'account-order', uids }, 'account-order')
+  }
   return (
     <>
       <SettingsGroup title={t('accountsTitle')} description={t('accountsDesc')}>
         {document.accounts.length === 0
           ? <p className="wb2-hint">{t('accountsEmpty')}</p>
           : (
-            <div className="cs-tableWrap">
-              <table className="cs-table">
+            <>
+              <p className="wb2-hint">{t('reorderHint')}</p>
+              <div className="cs-tableWrap">
+                <table className="cs-table">
                 <thead>
                   <tr>
                     <th>{t('colAccount')}</th>
@@ -358,7 +373,7 @@ function AccountsTab(props: {
                   </tr>
                 </thead>
                 <tbody>
-                  {document.accounts.map(account => {
+                  {document.accounts.map((account, index) => {
                     const tone = accountTone(account)
                     const name = account.nickname === '' ? t('noName') : account.nickname
                     const unlimited = account.creditsTotal === -1
@@ -378,13 +393,33 @@ function AccountsTab(props: {
                           ? t('credentialExpired')
                           : t('credentialExpiry', new Date(at).toISOString().slice(0, 10))
                       })()
+                    void index
+                    const isGateway = account.uid === document.gatewayAccount
                     return (
-                      <tr key={account.uid}>
+                      <tr
+                        key={account.uid}
+                        draggable
+                        data-wb2-row=""
+                        onDragStart={() => { setDragUid(account.uid) }}
+                        onDragOver={(event) => { event.preventDefault() }}
+                        onDrop={() => { moveAccount(account.uid) }}
+                        onDragEnd={() => { setDragUid(undefined) }}
+                        style={dragUid === account.uid ? { opacity: 0.5 } : undefined}
+                      >
                         <td>
                           <div className="cs-cellWho">
                             <div className="cs-nm">
+                              <span
+                                className="wb2-dragHandle"
+                                role="button"
+                                tabIndex={-1}
+                                title={t('dragHandle')}
+                                aria-label={t('dragHandle')}
+                                style={{ cursor: 'grab', userSelect: 'none', opacity: 0.55 }}
+                              >≡</span>
                               <StatusDot tone={tone} title={accountStateText(account, t)} />
                               <span title={account.uid}>{name}</span>
+                              {isGateway ? <Badge tone="ok">{t('gatewayAccountBadge')}</Badge> : null}
                               {account.realm === 'global' ? <Badge tone="muted">{t('realmGlobalShort')}</Badge> : null}
                               {account.enterprise ? <Badge tone="muted">{t('enterpriseShort')}</Badge> : null}
                             </div>
@@ -411,9 +446,9 @@ function AccountsTab(props: {
                                 ? '—'
                                 : (
                                   <>
-                                    {account.credits}
+                                    {formatCredits(account.credits)}
                                     {account.creditsTotal !== undefined && account.creditsTotal > 0
-                                      ? <span className="of">{'/' + String(account.creditsTotal)}</span>
+                                      ? <span className="of">{'/' + formatCredits(account.creditsTotal)}</span>
                                       : null}
                                   </>
                                 )}
@@ -505,7 +540,8 @@ function AccountsTab(props: {
                   })}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           )}
         <div className="cs-addRow">
           <ActionButton label={'+ ' + t('addAccountTitle')} onClick={() => { setAddOpen(true) }} />

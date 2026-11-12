@@ -330,6 +330,10 @@ const ZH = {
   "chipBound": "已固定：{0}",
   "chipNoSession": "这个会话还没有会话 ID。",
   "chipFailed": "请求失败",
+  "dragHandle": "拖动排序",
+  "reorderHint": "上下拖动账号即可调整顺序：设置页与聊天界面徽标共用同一顺序；排在第一位的账号提供给局域网其他工具调用。",
+  "gatewayAccountBadge": "网关账号",
+  "gatewayAccountHint": "该账号排在第一，作为局域网/其他工具的网关账号；聊天里点选账号不会占用它。",
   "addAccountTitle": "添加账号",
   "addPickHint": "选一个域，然后扫码完成登录；也可以直接粘贴令牌。",
   "addMode": "登录方式",
@@ -384,6 +388,26 @@ export function formatTokens(tokens: number): string {
   if (tokens >= 1_000_000) return String(tokens / 1_000_000).replace(/\.0$/, '') + 'M'
   if (tokens >= 1000) return String(Math.round(tokens / 1000)) + 'K'
   return String(tokens)
+}
+
+/**
+ * Format one credit amount the way WorkBuddy's own UI states a balance.
+ *
+ * Always at most two decimals: a fractional figure keeps exactly two
+ * (12345.7 -> 12,345.70), while a whole number drops the trailing .00 and
+ * reads as an integer (12345 -> 12,345). Thousands are grouped, as the pool
+ * figures here run into the tens of thousands. Every credit readout in the
+ * plugin funnels through this so the chip, cards, settings table and turn
+ * cost cannot disagree.
+ */
+export function formatCredits(value: number): string {
+  if (!Number.isFinite(value)) return '—'
+  const rounded = Math.round(value * 100) / 100
+  const fractional = !Number.isInteger(rounded)
+  return new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: fractional ? 2 : 0,
+    maximumFractionDigits: 2,
+  }).format(rounded)
 }
 
 /** Both dictionaries, keyed by locale id. */
@@ -698,6 +722,10 @@ const EN: Record<CopyKey, string> = {
   "creditChipPoolNote": "The pool rotates by weight per request; this shows the account that served the last one.",
   "turnCost": "This session ≈ {0} credits ({1} requests)",
   "turnCostHint": "Summed from the upstream usage.credit — the same figure WorkBuddy books, so price or free-tier changes follow automatically.",
+  "dragHandle": "Drag to reorder",
+  "reorderHint": "Drag accounts up or down to set the order: the settings table and the chat chip share one order, and the top account is offered to other tools on your LAN.",
+  "gatewayAccountBadge": "Gateway",
+  "gatewayAccountHint": "This account is first, so it is the gateway account for the LAN and other tools; picking accounts in chat will not take it.",
   "addAccountTitle": "Add account",
   "addPickHint": "Pick a realm, then finish sign-in by scanning the code — or paste a token instead.",
   "addMode": "Sign-in method",

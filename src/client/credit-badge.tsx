@@ -40,6 +40,7 @@ import { postAction } from './status-document.ts'
 import type { ClientAction } from './status-document.ts'
 import type { PanelStore } from './store.ts'
 import type { Translate } from './copy.ts'
+import { formatCredits } from './copy.ts'
 
 /** The two pools the gateway serves; the picker switches between them. */
 type Realm = 'cn' | 'global'
@@ -54,9 +55,9 @@ export interface CreditBadgeProps {
   session?: string
 }
 
-/** Compact a credit figure: 4160 → 4,160. */
+/** A credit figure in the plugin's one format: whole numbers stay whole, fractions keep two decimals. */
 function grouped(value: number): string {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value)
+  return formatCredits(value)
 }
 
 /** Local MM-DD HH:mm for one ISO timestamp, or '' when unreadable. */
@@ -82,28 +83,14 @@ function realmOf(account: WebAccount): Realm {
  *
  * @param pool - the accounts of one realm.
  */
-function speakingAccount(pool: readonly WebAccount[]): WebAccount | undefined {
-  const usable = pool.filter(account => account.status === 'active')
+function speakingAccount(pool: readonly WebAccount[], gatewayUid?: string): WebAccount | undefined {
+  const usable = pool.filter(account => account.status === 'active' && account.uid !== gatewayUid)
   const served = usable
     .filter(account => !isNever(account.lastSuccess))
     .sort((left, right) => Date.parse(right.lastSuccess ?? '') - Date.parse(left.lastSuccess ?? ''))
   if (served.length > 0) return served[0]
   return usable.length === 1 ? usable[0] : undefined
 }
-
-/**
- * Order the picker's rows: the one that served most recently first, then the
- * fullest, so the account a turn is most likely to land on is under the cursor.
- */
-function rankAccounts(pool: readonly WebAccount[]): WebAccount[] {
-  return [...pool].sort((left, right) => {
-    const leftAt = isNever(left.lastSuccess) ? 0 : Date.parse(left.lastSuccess ?? '')
-    const rightAt = isNever(right.lastSuccess) ? 0 : Date.parse(right.lastSuccess ?? '')
-    if (leftAt !== rightAt) return rightAt - leftAt
-    return (right.credits ?? -1) - (left.credits ?? -1)
-  })
-}
-
 
 /** Rows and tabs are styled by class (see ui-styles.ts) so they follow the theme. */
 
@@ -263,9 +250,10 @@ export function WorkBuddy2ApiCreditBadge({ t, store, directory, session }: Credi
     : document_.accounts.find(account => account.uid === boundUid)
   // A pin is the user's decision and outranks the inference; the inference is
   // only what the chip can honestly say when nobody has pinned anything.
+  const gatewayUid = document_.gatewayAccount
   const current = boundAccount !== undefined && boundAccount.credits !== undefined
     ? boundAccount
-    : speakingAccount(pool)
+    : speakingAccount(pool, gatewayUid)
   const shown = current?.credits ?? total
   const who = current === undefined ? t('panelAccountsTitle') : nameOf(current)
 
@@ -336,7 +324,9 @@ export function WorkBuddy2ApiCreditBadge({ t, store, directory, session }: Credi
   }
 
   const activeRealm: Realm = tab ?? realm
-  const rows = rankAccounts(document_.accounts.filter(account => realmOf(account) === activeRealm))
+  // The document already carries the user's dragged order; keep it (do not re-rank)
+  // so the picker matches the settings table, and leave the gateway account out.
+  const rows = document_.accounts.filter(account => realmOf(account) === activeRealm && account.uid !== gatewayUid)
   const pending = busy !== undefined
 
   return (

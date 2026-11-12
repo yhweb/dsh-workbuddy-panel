@@ -19,6 +19,7 @@ import type { ReactElement } from 'react'
 import { postAction } from './status-document.ts'
 import type { PanelStore } from './store.ts'
 import type { Translate } from './copy.ts'
+import { formatCredits } from './copy.ts'
 
 /** What the composer dock injects. */
 export interface TurnCreditsProps {
@@ -70,7 +71,7 @@ export function WorkBuddy2ApiTurnCredits({ t, store, session }: TurnCreditsProps
   if (usage === undefined) return null
   return (
     <span className="wb2aTurnCost" title={t('turnCostHint')}>
-      {t('turnCost', usage.credits.toFixed(2), String(usage.requests))}
+      {t('turnCost', formatCredits(usage.credits), String(usage.requests))}
     </span>
   )
 }

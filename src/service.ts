@@ -48,8 +48,10 @@ import type {
   ServerStatus,
 } from './gateway-contract.ts'
 import { serverManifest } from './server-release.ts'
-import { readAccountDefaults, writeAccountDefaults } from './account-defaults.ts'
+import { readAccountDefaults } from './account-defaults.ts'
 import type { AccountDefaults } from './account-defaults.ts'
+import { applyAccountOrder, readAccountOrder, writeAccountOrder } from './account-order.ts'
+import type { ProvidersHubBridge } from './providers-hub-bridge.ts'
 
 /** Format version of the cached catalog document. */
 const CACHE_VERSION = 2
@@ -224,6 +226,12 @@ export interface WebStatus {
     hiddenModels: number
   }
   accounts: readonly WebAccount[]
+  /**
+   * The account at the top of the user's order: offered to the LAN as the
+   * gateway account. DSH conversations prefer the others; the picker excludes
+   * this one so a conversation is not pinned to it by default.
+   */
+  gatewayAccount?: string
   models: readonly WebModel[]
   updatedAt?: string
   error?: string
@@ -265,6 +273,8 @@ export interface WorkBuddy2ApiServiceOptions {
   client: PanelClient
   /** Resolve the host row lazily: either row may load first. */
   host: () => GatewayHost | undefined
+  /** Optional bridge to dsh-providers-hub for the cn pool; absent when not loaded. */
+  providersHubBridge?: () => ProvidersHubBridge | undefined
   cachePath?: string
   warn?: (message: string, error?: unknown) => void
   onChange?: () => void
@@ -460,6 +470,8 @@ export class WorkBuddy2ApiService {
   private sessionsError?: string
   /** The account the user picked by hand; survives restarts and applies to new sessions. */
   private defaults: AccountDefaults = readAccountDefaults()
+  /** The order the user dragged the pool into: shared by table and picker. */
+  private order: readonly string[] = readAccountOrder()
   private emptyModelReads = 0
   /** Consecutive reads that omitted a realm, keyed by realm. */
   private realmGaps = new Map<ModelRegion, number>()
@@ -695,6 +707,8 @@ export class WorkBuddy2ApiService {
     const gatewayReachable = gateway.state === 'running' || gateway.state === 'external'
     const connected = gatewayReachable && this.lastReadOk
     const enabledModels = this.catalog.filter(model => model.enabled).length
+    const orderedAccounts = applyAccountOrder((overview?.accounts ?? []).map(webAccount), this.order)
+    const gatewayAccount = orderedAccounts[0]?.uid
     const counts = {
       total: overview?.total ?? 0,
       healthy: overview?.healthy ?? 0,
@@ -749,7 +763,8 @@ export class WorkBuddy2ApiService {
         ...this.sessionsError === undefined ? {} : { error: this.sessionsError },
       },
       counts,
-      accounts: (overview?.accounts ?? []).map(webAccount),
+      accounts: orderedAccounts,
+      ...gatewayAccount === undefined ? {} : { gatewayAccount },
       models: this.catalog.map(webModel),
       ...this.snapshot.at === undefined ? {} : { updatedAt: this.snapshot.at },
       ...this.snapshot.error === undefined ? {} : { error: this.snapshot.error },
@@ -1106,35 +1121,16 @@ export class WorkBuddy2ApiService {
     return account.realm === 'global' ? 'global' : 'cn'
   }
 
-  /** Persist one manual pick as the realm's default. */
-  private rememberPick(uid: string): void {
-    const realm = this.realmOfAccount(uid)
-    if (realm === undefined) return
-    const next: AccountDefaults = { version: 1 }
-    if (this.defaults.cn !== undefined) next.cn = this.defaults.cn
-    if (this.defaults.global !== undefined) next.global = this.defaults.global
-    next[realm] = uid
-    this.defaults = next
-    writeAccountDefaults(next)
-  }
-
-  /** Drop the realm's default, so new sessions go back to pool allocation. */
-  private forgetPick(uid: string): void {
-    const realm = this.realmOfAccount(uid)
-    if (realm === undefined) return
-    const next: AccountDefaults = { version: 1 }
-    if (this.defaults.cn !== undefined) next.cn = this.defaults.cn
-    if (this.defaults.global !== undefined) next.global = this.defaults.global
-    delete next[realm]
-    this.defaults = next
-    writeAccountDefaults(next)
-  }
-
-  /** Pin one session key to one account: the pool stops rotating that session. */
+  /**
+   * Pin one session key to one account: the pool stops rotating that session.
+   *
+   * The pick is deliberately session-scoped: it does not write a realm default,
+   * so choosing an account in one conversation neither re-pins new conversations
+   * nor touches the accounts the pool still hands to everyone else.
+   */
   async bindSession(key: string, uid: string): Promise<ActionOutcome> {
     try {
       await this.options.client.bindSession(key, uid)
-      this.rememberPick(uid)
       return this.settled({ ok: true, message: 'session bound' })
     } catch (error: unknown) {
       return { ok: false, message: safeMessage(error), status: this.status() }
@@ -1153,10 +1149,31 @@ export class WorkBuddy2ApiService {
   /** Release one session key back to the pool's own allocation. */
   async unbindSession(key: string): Promise<ActionOutcome> {
     try {
-      const previous = this.sessions.find(binding => binding.key === key)
       await this.options.client.unbindSession(key)
-      if (previous !== undefined) this.forgetPick(previous.uid)
       return this.settled({ ok: true, message: 'session released' })
+    } catch (error: unknown) {
+      return { ok: false, message: safeMessage(error), status: this.status() }
+    }
+  }
+
+  /**
+   * Replace the account order.
+   *
+   * Only accounts the gateway currently reports are kept, in the order given; a
+   * dragged row therefore cannot smuggle in an unknown uid, and a removed
+   * account drops out on the next read. The first surviving uid becomes the
+   * gateway account offered to the LAN.
+   */
+  setAccountOrder(uids: readonly string[]): ActionOutcome {
+    const known = new Set((this.snapshot.overview?.accounts ?? []).map(account => account.uid))
+    const filtered = uids.filter(uid => known.has(uid))
+    try {
+      this.order = writeAccountOrder(filtered)
+      const bridge = this.options.providersHubBridge?.()
+      if (bridge !== undefined && bridge.availability() === 'present') {
+        void bridge.pushOrder(filtered).catch(() => {})
+      }
+      return { ok: true, message: 'order saved', status: this.status() }
     } catch (error: unknown) {
       return { ok: false, message: safeMessage(error), status: this.status() }
     }

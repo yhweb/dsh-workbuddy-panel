@@ -15,6 +15,7 @@ import { useEffect, useSyncExternalStore } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import type { PanelStore } from './store.ts'
 import type { Translate } from './copy.ts'
+import { formatCredits } from './copy.ts'
 import type { StatusDocument } from './status-document.ts'
 import type { WebAccount, WebModel } from '../service.ts'
 import type { GatewayState } from '../gateway-contract.ts'
@@ -85,10 +86,10 @@ function accountTone(account: WebAccount): 'ok' | 'warn' | 'error' | 'off' {
   return 'off'
 }
 
-/** Group a count into the compact form the tiles use. */
+/** A credit figure in the plugin's one format (two decimals, or whole when exact). */
 function figure(value: number | undefined): string {
   if (value === undefined || !Number.isFinite(value)) return '—'
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value)
+  return formatCredits(value)
 }
 
 /** Read the store, starting and stopping the shared poll with the mount. */

@@ -42,6 +42,8 @@ import { registerGatewayRoutes } from './routes.ts'
 import { WORKBUDDY2API_GATEWAY_VERSION } from './version.ts'
 import { piAiVersionSummary, piAiVersionWarning, resolvedPiAiVersion } from './pi-ai-version.ts'
 import { pluginDataDir } from './paths.ts'
+import { createProvidersHubBridge, readPanelCnAccounts } from './providers-hub-bridge.ts'
+import type { AccountPoolLike, CredentialsLike } from './providers-hub-bridge.ts'
 import {
   WORKBUDDY2API_CATALOG_SERVICE,
   WORKBUDDY2API_CATALOG_SERVICE_VERSION,
@@ -209,6 +211,7 @@ export function apply(ctx: Context, config: Config): void {
     warn: (message, error) => {
       log.warn(message, error)
     },
+    providersHubBridge: () => providersHubBridge,
     onChange: () => {
       // A changed catalog must also rebuild the adapter's own snapshot: the
       // host asks that snapshot to resolve a model before it asks the provider
@@ -227,6 +230,16 @@ export function apply(ctx: Context, config: Config): void {
   // Publish the catalog as a Cordis service so a sibling plugin can read the
   // models and their credit prices without importing this panel. Registered on
   // this row's fiber, so it unregisters automatically when the row unloads.
+  // Optional reconciliation with dsh-providers-hub's cn (CodeBuddy) pool.
+  // accountPool and credentials are both host-provided Cordis services; they are
+  // resolved lazily so the panel works unchanged when providers-hub is absent.
+  const providersHubBridge = createProvidersHubBridge(() => {
+    const accountPool = ctx.get('accountPool') as unknown as AccountPoolLike | undefined
+    const credentials = ctx.get('credentials') as unknown as CredentialsLike | undefined
+    if (accountPool === undefined || credentials === undefined) return undefined
+    return { accountPool, credentials }
+  })
+
   ctx.provide(
     WORKBUDDY2API_CATALOG_SERVICE,
     createWorkBuddy2ApiCatalog(
@@ -238,6 +251,25 @@ export function apply(ctx: Context, config: Config): void {
   // The host row starts the process; the panel only reads the catalog once.
   void service.refresh().catch((error: unknown) => {
     log.warn('workbuddy2api-gateway: first gateway read failed', error)
+  })
+
+  // One-shot reconciliation with providers-hub once the gateway has answered:
+  // push panel-only cn accounts over, then adopt providers-hub's authoritative
+  // cn order (rate-limited accounts sunk). Failures are logged, never fatal.
+  void service.refresh().then(async () => {
+    const bridge = providersHubBridge
+    if (bridge.availability() !== 'present') return
+    const panel = readPanelCnAccounts()
+    const result = await bridge.reconcile(panel).catch(() => undefined)
+    if (result === undefined || result.availability === 'absent') return
+    if (result.order.length > 0) {
+      service.setAccountOrder(result.order)
+    }
+    if (result.addedToProvidersHub > 0) {
+      log.info('workbuddy2api-gateway: pushed ' + String(result.addedToProvidersHub) + ' cn account(s) to providers-hub')
+    }
+  }).catch((error: unknown) => {
+    log.warn('workbuddy2api-gateway: providers-hub reconcile failed', error)
   })
 
   // One ticker instead of one timer per interval: the cadence is a setting the

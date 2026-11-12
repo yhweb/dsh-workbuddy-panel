@@ -75,6 +75,7 @@ export type GatewayAction =
   | { action: 'session-bind', session: string, uid: string }
   | { action: 'session-unbind', session: string }
   | { action: 'session-credits', session: string }
+  | { action: 'account-order', uids: readonly string[] }
 
 /** Write one JSON response. */
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -219,6 +220,12 @@ export function parseAction(text: string): GatewayAction | undefined {
       const session = strField(body['session'])
       return session === undefined ? undefined : { action: 'session-unbind', session }
     }
+    case 'account-order': {
+      const raw = body['uids']
+      if (!Array.isArray(raw)) return undefined
+      const uids = raw.filter((uid): uid is string => typeof uid === 'string' && uid !== '')
+      return { action: 'account-order', uids }
+    }
     case 'import': {
       const payload = strField(body['payload'])
       return payload === undefined ? undefined : { action: 'import', payload }
@@ -347,6 +354,8 @@ export async function runAction(service: WorkBuddy2ApiService, action: GatewayAc
       return service.unbindSession(action.session)
     case 'session-credits':
       return service.sessionCredits(action.session)
+    case 'account-order':
+      return Promise.resolve(service.setAccountOrder(action.uids))
     case 'import':
       return service.importAccounts(action.payload)
   }
