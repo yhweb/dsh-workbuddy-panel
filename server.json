@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "version": "1.15.2-panel",
+  "version": "1.15.3-panel",
   "apiVersion": 1,
   "minPanel": "0.4.0",
-  "releaseTag": "server-v1.15.2-panel",
+  "releaseTag": "server-v1.15.3-panel",
   "releaseBaseUrl": "https://github.com/yhweb/dsh-workbuddy-panel/releases/download",
   "assets": {
     "win32-x64": {
-      "asset": "workbuddy2api-1.15.2-panel-win32-x64.gz",
-      "sha256": "b6fb5f6bebc58084b738b8b42cd53e6481dc591af07ff86830e3c3010d0d446d",
-      "size": 10627072,
-      "downloadSize": 4324864
+      "asset": "workbuddy2api-1.15.3-panel-win32-x64.gz",
+      "sha256": "a49b0f254e3f04440f824259770042008dd0c05a5f15c1b3d003f62995985c1e",
+      "size": 10626560,
+      "downloadSize": 4325036
     }
   }
 }
